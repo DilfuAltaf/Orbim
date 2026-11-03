@@ -37,3 +37,8 @@ Thumbs.db
 
 # Deployment platform metadata
 .vercel/
+
+# Local tool metadata and dev-server runtime stores
+# (assets/users/*.json are recreated on demand and hold local test data)
+.freebuff/
+assets/users/*.json

@@ -1,0 +1,32 @@
+{
+  "2o1pb13quMReXZqE7jWsgq": {
+    "providerTrackId": "2o1pb13quMReXZqE7jWsgq",
+    "audioUrl": "https://rprrvdyugakkpittzvjv.supabase.co/storage/v1/object/public/track-audio/96e20d19-6a61-4938-b765-b226e9f2ccbb/744b4c5b-8d35-49b3-8378-66d1eed81ab7.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "intro (end of the world)",
+    "artistName": "Ariana Grande",
+    "albumName": "eternal sunshine",
+    "artworkUrl": "https://i.scdn.co/image/ab67616d0000b2738b58d20f1b77295730db15b4",
+    "durationSeconds": 92,
+    "updatedAt": "2026-11-01T08:53:40.892Z"
+  },
+  "2009X8GyWTqyxIdzAEYW6N": {
+    "providerTrackId": "2009X8GyWTqyxIdzAEYW6N",
+    "audioUrl": "https://rprrvdyugakkpittzvjv.supabase.co/storage/v1/object/public/track-audio/96e20d19-6a61-4938-b765-b226e9f2ccbb/7b781883-b6c4-4c43-a1f4-c01f1cbbee35.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "The One That Got Away",
+    "artistName": "Katy Perry",
+    "albumName": "Teenage Dream",
+    "artworkUrl": "https://i.scdn.co/image/ab67616d0000b2731d955011a3ed477dc77865ad",
+    "durationSeconds": 227,
+    "updatedAt": "2026-11-02T02:29:41.332Z"
+  },
+  "7CyPwkp0oE8Ro9Dd5CUDjW": {
+    "providerTrackId": "7CyPwkp0oE8Ro9Dd5CUDjW",
+    "audioUrl": "https://rprrvdyugakkpittzvjv.supabase.co/storage/v1/object/public/track-audio/a61dfcc1-8e58-4267-9ec9-7689653dd5ca/77c67c86-abe6-4db5-af8e-0df19211cca8.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "One Of The Girls (with JENNIE, Lily Rose Depp)",
+    "artistName": "The Weeknd, JENNIE, Lily-Rose Depp",
+    "updatedAt": "2026-11-02T05:02:25.778Z"
+  }
+}

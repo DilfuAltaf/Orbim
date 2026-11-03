@@ -1,4 +1,34 @@
 {
+  /*
+   * Root config.
+   *
+   * `files: []` + `references` means `tsc -b` builds the three real projects
+   * (app / node / api) and this file compiles nothing on its own.
+   *
+   * The `compilerOptions` below exist so that any tool that resolves the
+   * project's TypeScript configuration for server-side code (Vercel's Node.js
+   * function builder, editors, `tsc` invocations that read tsconfig.json) gets
+   * the settings the API code actually needs instead of TypeScript defaults.
+   * With defaults, `api/**` and `src/server/**` fail with TS2591 (missing
+   * node:* types / process / Buffer), TS5097 (.ts import extensions rejected)
+   * and — because the default Node resolution cannot follow the
+   * `@supabase/auth-js` exports map — TS2305/TS2339 for `User` and
+   * `getUser`. Those options must stay in sync with tsconfig.api.json.
+   */
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    /* Required by moduleResolution: nodenext, which wants explicit extensions. */
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": true
+  },
   "files": [],
   "references": [
     { "path": "./tsconfig.app.json" },

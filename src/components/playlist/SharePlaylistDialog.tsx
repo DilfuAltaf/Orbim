@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
 import { useAuth } from '@/features/auth/auth-context'
 import { useToast } from '@/features/feedback/toast-context'
+import { getSupabaseAuthHeaders } from '@/lib/supabase'
 import { createPlaylistInvitation } from '@/services/playlist/supabase-playlist'
 import type { Playlist } from '@/types/music'
 
@@ -31,7 +32,10 @@ export function SharePlaylistDialog({ playlist, open, onClose }: SharePlaylistDi
 
     async function checkExisting() {
       try {
-        const res = await fetch('/api/invitations')
+        const authHeaders = await getSupabaseAuthHeaders()
+        const res = await fetch(`/api/invitations?playlistId=${encodeURIComponent(playlist.id)}`, {
+          headers: { ...authHeaders },
+        })
         if (res.ok) {
           const payload = (await res.json()) as {
             invitations?: Array<{ playlistId: string; rawToken?: string; expiresAt?: string }>

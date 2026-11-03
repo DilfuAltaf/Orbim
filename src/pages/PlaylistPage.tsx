@@ -25,7 +25,7 @@ import { useAuth } from '@/features/auth/auth-context'
 import { useToast } from '@/features/feedback/toast-context'
 import { formatRelativeTime, formatTotalLength, pluralize } from '@/lib/format'
 import { buttonVariants } from '@/lib/styles'
-import { getDataSource, isSupabaseConfigured, supabase } from '@/lib/supabase'
+import { getDataSource, getSupabaseAuthHeaders, isSupabaseConfigured, supabase } from '@/lib/supabase'
 import {
   getAllLocalUsers,
   getLocalPlaylists,
@@ -203,8 +203,10 @@ export function PlaylistPage() {
 
     // 1. Dev-server registry (local accounts and cross-browser sessions).
     try {
+      const authHeaders = await getSupabaseAuthHeaders()
       const res = await fetch(
         `/api/playlists/collaborators?playlistId=${encodeURIComponent(playlistId)}`,
+        { headers: { ...authHeaders } },
       )
       if (res.ok) {
         const payload = (await res.json()) as {

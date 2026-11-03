@@ -2,7 +2,7 @@
  * Client-Side Notification Service for Collaborator Invites & Actions
  */
 
-import { isSupabaseConfigured, supabase } from '@/lib/supabase'
+import { getSupabaseAuthHeaders, isSupabaseConfigured, supabase } from '@/lib/supabase'
 import {
   acceptPlaylistInvitation,
   acceptInvitationById,
@@ -177,7 +177,10 @@ export async function fetchUserNotifications(
   if (typeof fetch === 'function') {
     try {
       const q = params.toString() ? `?${params.toString()}` : ''
-      const res = await fetch(`/api/notifications${q}`)
+      const authHeaders = await getSupabaseAuthHeaders()
+      const res = await fetch(`/api/notifications${q}`, {
+        headers: { ...authHeaders },
+      })
       if (res.ok) {
         const payload = (await res.json()) as {
           success?: boolean
@@ -273,9 +276,10 @@ export async function sendPlaylistInvitationNotification(params: {
   // 2. Post to dev server for local fallback
   try {
     if (typeof fetch === 'function') {
+      const authHeaders = await getSupabaseAuthHeaders()
       await fetch('/api/notifications', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify(newNotif),
       }).catch(() => null)
     }
@@ -322,9 +326,10 @@ export async function sendPlaylistRemovalNotification(params: {
   // browser profile or device) receives it through its notification polling.
   try {
     if (typeof fetch === 'function') {
+      const authHeaders = await getSupabaseAuthHeaders()
       await fetch('/api/notifications', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify(newNotif),
       }).catch(() => null)
     }
@@ -403,9 +408,10 @@ export async function respondToInvitationNotification(
   // 2. Update server status
   try {
     if (typeof fetch === 'function') {
+      const authHeaders = await getSupabaseAuthHeaders()
       await fetch('/api/notifications', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({
           id: notifId,
           status: newStatus,
@@ -439,9 +445,10 @@ export async function respondToInvitationNotification(
     if (playlistId) {
       try {
         if (typeof fetch === 'function') {
+          const authHeaders = await getSupabaseAuthHeaders()
           await fetch('/api/playlists/collaborators', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...authHeaders },
             body: JSON.stringify({
               playlistId,
               userId: callerUserId || target.recipientUserId,
@@ -482,8 +489,10 @@ export async function respondToInvitationNotification(
 export async function deleteNotification(notificationId: string): Promise<void> {
   try {
     if (typeof fetch === 'function') {
+      const authHeaders = await getSupabaseAuthHeaders()
       await fetch(`/api/notifications?id=${encodeURIComponent(notificationId)}`, {
         method: 'DELETE',
+        headers: { ...authHeaders },
       })
     }
   } catch {

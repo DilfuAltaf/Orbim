@@ -9,7 +9,7 @@
  * - Never references an audio file that was not confirmed uploaded.
  */
 
-import { supabase } from '../../lib/supabase.ts'
+import { getSupabaseAuthHeaders, supabase } from '../../lib/supabase.ts'
 import { isUserAdmin } from '../../features/auth/admin.ts'
 import type { MusicTrack } from '../../types/music.ts'
 import { addTrackToUserPlaylist } from '../playlist/add-to-playlist.ts'
@@ -91,6 +91,7 @@ export async function uploadAudioToServer(params: {
   const effectiveFileName = fileName || (audioFile instanceof File ? audioFile.name : 'audio.mp3')
 
   try {
+    const authHeaders = await getSupabaseAuthHeaders()
     const res = await fetch('/api/audio/upload', {
       method: 'POST',
       headers: {
@@ -99,6 +100,7 @@ export async function uploadAudioToServer(params: {
         'x-file-name': encodeURIComponent(effectiveFileName),
         'x-title': encodeURIComponent(track.title || ''),
         'x-artist': encodeURIComponent(track.artistName || ''),
+        ...authHeaders,
       },
       body: audioFile,
     })

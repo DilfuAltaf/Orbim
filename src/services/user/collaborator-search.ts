@@ -1,4 +1,4 @@
-import { getDataSource, isSupabaseConfigured, supabase } from '../../lib/supabase.ts'
+import { getDataSource, getSupabaseAuthHeaders, isSupabaseConfigured, supabase } from '../../lib/supabase.ts'
 import {
   getAllLocalUsers,
   getLocalPlaylists,
@@ -135,8 +135,9 @@ export async function searchCollaboratorCandidates(
   // 2. Registered accounts from the dev server (emails deliberately not returned).
   try {
     if (typeof fetch === 'function') {
+      const authHeaders = await getSupabaseAuthHeaders()
       const res = await fetch(`/api/users?q=${encodeURIComponent(trimmed)}`, {
-        headers: { Accept: 'application/json' },
+        headers: { Accept: 'application/json', ...authHeaders },
       })
       if (res.ok) {
         const payload = (await res.json()) as { users?: UserCandidate[] }
@@ -227,9 +228,10 @@ export async function addCollaboratorToPlaylist(
     const foundPl = localPlaylists.find((p) => p.id === playlistId)
     if (foundPl && typeof fetch === 'function') {
       const localTracks = getLocalPlaylistTracks(playlistId)
+      const authHeaders = await getSupabaseAuthHeaders()
       void fetch('/api/playlists', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ playlist: foundPl, tracks: localTracks }),
       }).catch(() => null)
     }
@@ -240,9 +242,10 @@ export async function addCollaboratorToPlaylist(
   // 2. Persist to server collaborators registry
   try {
     if (typeof fetch === 'function') {
+      const authHeaders = await getSupabaseAuthHeaders()
       void fetch('/api/playlists/collaborators', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({
           playlistId,
           userId: collaborator.id,

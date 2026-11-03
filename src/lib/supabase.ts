@@ -166,3 +166,26 @@ export const supabase: SupabaseClient<Database> = new Proxy({} as SupabaseClient
     return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(client) : value
   },
 })
+
+/**
+ * Retrieves the current Supabase session access token, or null if unauthenticated.
+ */
+export async function getSupabaseAccessToken(): Promise<string | null> {
+  try {
+    const client = getSupabaseClient()
+    const { data } = await client.auth.getSession()
+    return data.session?.access_token || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Returns an Authorization header object with the current Supabase session Bearer token,
+ * or an empty object if no session is active.
+ */
+export async function getSupabaseAuthHeaders(): Promise<Record<string, string>> {
+  const token = await getSupabaseAccessToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+

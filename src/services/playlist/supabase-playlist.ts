@@ -1,4 +1,4 @@
-import { getDataSource, isSupabaseConfigured, supabase } from '../../lib/supabase.ts'
+import { getDataSource, getSupabaseAuthHeaders, isSupabaseConfigured, supabase } from '../../lib/supabase.ts'
 import type { Database } from '../../types/database.ts'
 import type { MusicTrack } from '../../types/music.ts'
 import {
@@ -35,9 +35,10 @@ export async function syncPlaylistToServer(
 ): Promise<void> {
   try {
     if (typeof fetch === 'function') {
+      const authHeaders = await getSupabaseAuthHeaders()
       await fetch('/api/playlists', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ playlist, tracks }),
       })
     }
@@ -71,9 +72,10 @@ export async function syncTrackToServer(track: {
 }): Promise<void> {
   try {
     if (typeof fetch === 'function') {
+      const authHeaders = await getSupabaseAuthHeaders()
       await fetch('/api/playlists/tracks', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ track }),
       })
     }
@@ -98,7 +100,10 @@ export async function fetchServerFullPlaylist(playlistId: string): Promise<{
 } | null> {
   try {
     if (typeof fetch === 'function') {
-      const res = await fetch(`/api/playlists?playlistId=${encodeURIComponent(playlistId)}`)
+      const authHeaders = await getSupabaseAuthHeaders()
+      const res = await fetch(`/api/playlists?playlistId=${encodeURIComponent(playlistId)}`, {
+        headers: { ...authHeaders },
+      })
       if (res.ok) {
         const payload = (await res.json()) as {
           success?: boolean
@@ -142,7 +147,10 @@ export async function fetchServerUserPlaylists(
         if (userQuery.displayName?.trim()) params.set('displayName', userQuery.displayName.trim())
       }
       const q = params.toString() ? `?${params.toString()}` : ''
-      const res = await fetch(`/api/playlists${q}`)
+      const authHeaders = await getSupabaseAuthHeaders()
+      const res = await fetch(`/api/playlists${q}`, {
+        headers: { ...authHeaders },
+      })
       if (res.ok) {
         const payload = (await res.json()) as {
           success?: boolean
@@ -698,9 +706,10 @@ export async function createPlaylistInvitation(
   // 2. Persist to server registry for seamless cross-browser / local collaboration
   try {
     if (typeof fetch === 'function') {
+      const authHeaders = await getSupabaseAuthHeaders()
       await fetch('/api/invitations', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({
           id: crypto.randomUUID(),
           rawToken,
@@ -831,9 +840,10 @@ export async function createUsernamePlaylistInvitation(
     // Also sync to dev server registry for hybrid local environments
     try {
       if (typeof fetch === 'function') {
+        const authHeaders = await getSupabaseAuthHeaders()
         await fetch('/api/invitations', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeaders },
           body: JSON.stringify({
             id: inserted.id,
             playlistId,
@@ -858,9 +868,10 @@ export async function createUsernamePlaylistInvitation(
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
   try {
     if (typeof fetch === 'function') {
+      const authHeaders = await getSupabaseAuthHeaders()
       const res = await fetch('/api/invitations', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({
           id: invId,
           playlistId,
@@ -935,7 +946,10 @@ export async function previewPlaylistInvitation(token: string): Promise<{
   // Fallback to dev server
   try {
     if (typeof fetch === 'function') {
-      const res = await fetch(`/api/invitations?token=${encodeURIComponent(cleanToken)}`)
+      const authHeaders = await getSupabaseAuthHeaders()
+      const res = await fetch(`/api/invitations?token=${encodeURIComponent(cleanToken)}`, {
+        headers: { ...authHeaders },
+      })
       if (res.ok) {
         const payload = (await res.json()) as {
           invitations?: Array<{
@@ -1028,9 +1042,10 @@ export async function acceptPlaylistInvitation(token: string): Promise<{
 
   try {
     if (typeof fetch === 'function') {
+      const authHeaders = await getSupabaseAuthHeaders()
       const res = await fetch('/api/invitations/accept', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({
           token: cleanToken,
           userId: callerId,

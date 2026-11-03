@@ -917,7 +917,7 @@ export function spotifyApiDevPlugin(): Plugin {
           req.url?.startsWith('/api/users') ||
           req.url?.startsWith('/api/invitations') ||
           req.url?.startsWith('/api/notifications') ||
-          req.url?.startsWith('/api/playlists/') ||
+          req.url?.startsWith('/api/playlists') ||
           req.url?.startsWith('/assets/audio/')
         ) {
           if (handleRequest(req, res)) {
@@ -935,7 +935,7 @@ export function spotifyApiDevPlugin(): Plugin {
           req.url?.startsWith('/api/users') ||
           req.url?.startsWith('/api/invitations') ||
           req.url?.startsWith('/api/notifications') ||
-          req.url?.startsWith('/api/playlists/') ||
+          req.url?.startsWith('/api/playlists') ||
           req.url?.startsWith('/assets/audio/')
         ) {
           if (handleRequest(req, res)) {

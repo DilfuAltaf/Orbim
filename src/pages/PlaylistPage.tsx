@@ -73,42 +73,40 @@ export function PlaylistPage() {
   const mock = isDemo && playlistId ? findPlaylist(playlistId) : null
   const [remotePlaylist, setRemotePlaylist] = useState<Playlist | null>(null)
   const [remoteError, setRemoteError] = useState<string | null>(null)
-  const [isLoadingRemote, setIsLoadingRemote] = useState<boolean>(() => !mock && Boolean(playlistId && UUID_REGEX.test(playlistId)))
+  const [isLoadingRemote, setIsLoadingRemote] = useState<boolean>(() => !mock && Boolean(playlistId))
 
   const fetchRemotePlaylist = useCallback(async () => {
-    if (!playlistId || !UUID_REGEX.test(playlistId)) return null
+    if (!playlistId) return null
 
     // 1. Check local storage
     const localList = getLocalPlaylists()
     const foundLocal = localList.find((p) => p.id === playlistId)
     if (foundLocal) {
       const localTracks = getLocalPlaylistTracks(playlistId)
-      if (localTracks.length > 0) {
-        return {
-          data: {
-            id: foundLocal.id,
-            title: foundLocal.title,
-            description: foundLocal.description,
-            owner_id: foundLocal.owner_id,
-            visibility: foundLocal.visibility,
-            created_at: foundLocal.created_at,
-            updated_at: foundLocal.updated_at,
-            playlist_tracks: localTracks.map((t) => ({
-              ...t,
-              added_at: t.created_at,
-            })),
-            playlist_members: [
-              {
-                id: 'member-' + foundLocal.owner_id,
-                playlist_id: foundLocal.id,
-                user_id: foundLocal.owner_id,
-                role: 'owner',
-                joined_at: foundLocal.created_at,
-              },
-            ],
-          },
-          error: null,
-        }
+      return {
+        data: {
+          id: foundLocal.id,
+          title: foundLocal.title,
+          description: foundLocal.description,
+          owner_id: foundLocal.owner_id,
+          visibility: foundLocal.visibility,
+          created_at: foundLocal.created_at,
+          updated_at: foundLocal.updated_at,
+          playlist_tracks: localTracks.map((t) => ({
+            ...t,
+            added_at: t.created_at,
+          })),
+          playlist_members: [
+            {
+              id: 'member-' + foundLocal.owner_id,
+              playlist_id: foundLocal.id,
+              user_id: foundLocal.owner_id,
+              role: 'owner',
+              joined_at: foundLocal.created_at,
+            },
+          ],
+        },
+        error: null,
       }
     }
 
@@ -138,7 +136,11 @@ export function PlaylistPage() {
       }
     }
 
-    // 3. Fallback: Supabase remote fetch
+    // 3. Fallback: Supabase remote fetch (only valid UUIDs)
+    if (!UUID_REGEX.test(playlistId)) {
+      return null
+    }
+
     const remoteRes = await supabase
       .from('playlists')
       .select(`
@@ -154,36 +156,6 @@ export function PlaylistPage() {
       `)
       .eq('id', playlistId)
       .maybeSingle()
-
-    if (remoteRes.data) {
-      return remoteRes
-    }
-
-    // 4. Fallback if foundLocal existed with 0 tracks
-    if (foundLocal) {
-      return {
-        data: {
-          id: foundLocal.id,
-          title: foundLocal.title,
-          description: foundLocal.description,
-          owner_id: foundLocal.owner_id,
-          visibility: foundLocal.visibility,
-          created_at: foundLocal.created_at,
-          updated_at: foundLocal.updated_at,
-          playlist_tracks: [],
-          playlist_members: [
-            {
-              id: 'member-' + foundLocal.owner_id,
-              playlist_id: foundLocal.id,
-              user_id: foundLocal.owner_id,
-              role: 'owner',
-              joined_at: foundLocal.created_at,
-            },
-          ],
-        },
-        error: null,
-      }
-    }
 
     return remoteRes
   }, [playlistId])
@@ -571,7 +543,7 @@ export function PlaylistPage() {
     )
   }
 
-  const isOwned = user ? playlist.owner.id === user.id : isOwnedByViewer(playlist)
+  const isOwned = user ? playlist.owner.id === user.id || isAdmin : isOwnedByViewer(playlist)
   const tracks = playlistTracks(playlist)
 
   async function handleRemoveTrack(track: MusicTrack) {

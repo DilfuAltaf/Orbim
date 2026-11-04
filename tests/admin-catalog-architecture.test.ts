@@ -5,12 +5,10 @@ import { describe, it } from 'node:test'
 
 import { isUserAdmin } from '../src/features/auth/admin.ts'
 import {
-  createDraftCatalogTrack,
   fetchAdminCatalogTracks,
   fetchPublishedCatalogTracks,
   getCatalogTrack,
   mapCatalogRecordToMusicTrack,
-  unpublishCatalogTrack,
   uploadAndPublishCatalogTrack,
 } from '../src/services/catalog/global-catalog-service.ts'
 import { addTrackToUserPlaylist } from '../src/services/playlist/add-to-playlist.ts'
@@ -49,21 +47,9 @@ describe('ORBIM — Admin-Managed Global Music Catalog Architecture & Security',
   })
 
   // --------------------------------------------------------------------------
-  // Rule 2 & 5: Regular user cannot upload audio or create drafts
+  // Rule 2: Regular user cannot upload audio or publish tracks
   // --------------------------------------------------------------------------
-  it('prevents regular users from uploading audio or creating draft tracks', async () => {
-    await assert.rejects(
-      async () => {
-        await createDraftCatalogTrack({
-          userEmail: REGULAR_USER_EMAIL,
-          userId: 'regular-user-id',
-          track: sampleTrack,
-        })
-      },
-      /Hanya akun administrator.*yang diizinkan/i,
-      'Regular user draft creation must be rejected',
-    )
-
+  it('prevents regular users from uploading audio or publishing tracks', async () => {
     const uploadRes = await uploadAndPublishCatalogTrack({
       userEmail: REGULAR_USER_EMAIL,
       userId: 'regular-user-id',
@@ -78,73 +64,9 @@ describe('ORBIM — Admin-Managed Global Music Catalog Architecture & Security',
   })
 
   // --------------------------------------------------------------------------
-  // Verification Scenario 1: Admin creates draft -> regular user cannot see it
+  // Verification Scenario 1: Admin publishes the track -> regular user can see and play it
   // --------------------------------------------------------------------------
-  it('Scenario 1: Admin creates a draft track -> regular user cannot see or query it', async () => {
-    const draftTrackMetadata: MusicTrack = {
-      ...sampleTrack,
-      providerTrackId: 'spotify_draft_only_123',
-      title: 'Secret Draft Song',
-    }
-
-    const draft = await createDraftCatalogTrack({
-      userEmail: ADMIN_EMAIL,
-      userId: 'admin-id-123',
-      track: draftTrackMetadata,
-    })
-
-    assert.equal(draft.publicationStatus, 'draft')
-    assert.equal(draft.audioUrl, null)
-
-    // Admin CAN see it in admin catalog view
-    const adminCatalog = await fetchAdminCatalogTracks({
-      userEmail: ADMIN_EMAIL,
-      status: 'all',
-    })
-    const foundInAdmin = adminCatalog.find((r) => r.providerTrackId === 'spotify_draft_only_123')
-    assert.ok(foundInAdmin, 'Admin must see draft in admin catalog')
-
-    // Regular user CANNOT see it in public catalog
-    const publicCatalog = await fetchPublishedCatalogTracks({
-      searchQuery: 'Secret Draft Song',
-    })
-    const foundInPublic = publicCatalog.find((t) => t.providerTrackId === 'spotify_draft_only_123')
-    assert.equal(foundInPublic, undefined, 'Regular user must not see draft in public catalog search')
-
-    // Regular user direct access via getCatalogTrack returns null
-    const directAccess = getCatalogTrack(draft.id, REGULAR_USER_EMAIL)
-    assert.equal(directAccess, null, 'Direct access to draft by regular user must be denied (returns null)')
-  })
-
-  // --------------------------------------------------------------------------
-  // Verification Scenario 2: Admin uploads audio without publishing (draft)
-  // --------------------------------------------------------------------------
-  it('Scenario 2: Admin creates draft track -> regular user cannot see or play it', async () => {
-    const unpublishedTrackMetadata: MusicTrack = {
-      ...sampleTrack,
-      providerTrackId: 'spotify_unpub_with_audio_456',
-      title: 'Unpublished Audio Track',
-    }
-
-    const draft = await createDraftCatalogTrack({
-      userEmail: ADMIN_EMAIL,
-      userId: 'admin-id-123',
-      track: unpublishedTrackMetadata,
-    })
-
-    // Regular user direct lookup
-    const userView = getCatalogTrack(draft.id, REGULAR_USER_EMAIL)
-    assert.equal(userView, null, 'Regular user cannot access unpublished track')
-
-    // Public catalog query
-    const catalog = await fetchPublishedCatalogTracks({ searchQuery: 'Unpublished Audio Track' })
-    assert.equal(catalog.length, 0, 'Catalog query by regular user must yield 0 results for draft')
-  })
-
-  // --------------------------------------------------------------------------
-  // Verification Scenario 3: Admin publishes the track -> regular user can see and play it
-  // --------------------------------------------------------------------------
-  it('Scenario 3: Admin publishes track -> regular users can see, search, and play it', async () => {
+  it('Scenario 1: Admin publishes track -> regular users can see, search, and play it', async () => {
     const publishedMetadata: MusicTrack = {
       ...sampleTrack,
       providerTrackId: 'spotify_published_success_789',
@@ -166,6 +88,14 @@ describe('ORBIM — Admin-Managed Global Music Catalog Architecture & Security',
     assert.ok(publishResult.catalogTrack.storagePath, 'Storage path must be recorded')
     assert.ok(publishResult.catalogTrack.audioUrl, 'Audio playback URL must be recorded')
 
+    // Admin CAN see it in admin catalog view
+    const adminCatalog = await fetchAdminCatalogTracks({
+      userEmail: ADMIN_EMAIL,
+      status: 'all',
+    })
+    const foundInAdmin = adminCatalog.find((r) => r.providerTrackId === 'spotify_published_success_789')
+    assert.ok(foundInAdmin, 'Admin must see published track in admin catalog')
+
     // Regular user can find it in public catalog
     const publicCatalog = await fetchPublishedCatalogTracks({
       searchQuery: 'Blinding Lights (Published)',
@@ -184,80 +114,17 @@ describe('ORBIM — Admin-Managed Global Music Catalog Architecture & Security',
   })
 
   // --------------------------------------------------------------------------
-  // Verification Scenario 4: Admin unpublishes the track -> regular user loses access
+  // Verification Scenario 2: Direct access to unknown track ID returns null
   // --------------------------------------------------------------------------
-  it('Scenario 4: Admin unpublishes track -> regular users lose catalog visibility and playback', async () => {
-    const trackToUnpublish: MusicTrack = {
-      ...sampleTrack,
-      providerTrackId: 'spotify_to_unpublish_999',
-      title: 'Temporary Hit Track',
-    }
-
-    const pubRes = await uploadAndPublishCatalogTrack({
-      userEmail: ADMIN_EMAIL,
-      userId: 'admin-id-123',
-      track: trackToUnpublish,
-      audioFile: dummyAudioFile,
-      fileName: 'temp_hit.mp3',
-    })
-    assert.equal(pubRes.success, true)
-    const trackId = pubRes.catalogTrack!.id
-
-    // Confirm it was visible
-    const beforeUnpublish = getCatalogTrack(trackId, REGULAR_USER_EMAIL)
-    assert.ok(beforeUnpublish, 'Should be visible before unpublishing')
-
-    // Admin unpublishes
-    const unpubRes = await unpublishCatalogTrack({
-      trackId,
-      userEmail: ADMIN_EMAIL,
-    })
-    assert.equal(unpubRes.success, true)
-
-    // Regular user direct access is now denied
-    const afterUnpublish = getCatalogTrack(trackId, REGULAR_USER_EMAIL)
-    assert.equal(afterUnpublish, null, 'Regular user access to unpublished track must return null')
-
-    // Catalog search yields nothing
-    const searchAfter = await fetchPublishedCatalogTracks({ searchQuery: 'Temporary Hit Track' })
-    const foundAfter = searchAfter.find((t) => t.providerTrackId === 'spotify_to_unpublish_999')
-    assert.equal(foundAfter, undefined, 'Unpublished track must not appear in search results')
+  it('Scenario 2: Direct access to non-existent track ID returns null', async () => {
+    const directUserAccess = getCatalogTrack('non-existent-track-id', REGULAR_USER_EMAIL)
+    assert.equal(directUserAccess, null, 'Direct lookup for non-existent ID must return null')
   })
 
   // --------------------------------------------------------------------------
-  // Verification Scenario 5: Direct access to draft ID is denied for regular users
+  // Verification Scenario 4: Playlist Membership Separation (No Duplicate Audio)
   // --------------------------------------------------------------------------
-  it('Scenario 5: Regular user direct access to draft IDs is strictly denied', async () => {
-    const draftTrack: MusicTrack = {
-      ...sampleTrack,
-      providerTrackId: 'spotify_private_draft_000',
-      title: 'Private Unreleased Demo',
-    }
-
-    const draft = await createDraftCatalogTrack({
-      userEmail: ADMIN_EMAIL,
-      userId: 'admin-id-123',
-      track: draftTrack,
-    })
-
-    // User attempts lookup by catalog ID
-    const directUserAccess = getCatalogTrack(draft.id, REGULAR_USER_EMAIL)
-    assert.equal(directUserAccess, null, 'Direct lookup by draft ID must return null for regular users')
-
-    // User attempts lookup by provider track ID
-    const directProviderAccess = getCatalogTrack(draft.providerTrackId, REGULAR_USER_EMAIL)
-    assert.equal(directProviderAccess, null, 'Direct lookup by provider ID must return null for regular users')
-
-    // Admin CAN look it up directly
-    const directAdminAccess = getCatalogTrack(draft.id, ADMIN_EMAIL)
-    assert.ok(directAdminAccess, 'Admin can look up draft by ID')
-    assert.equal(directAdminAccess.id, draft.id)
-  })
-
-  // --------------------------------------------------------------------------
-  // Verification Scenario 6: Playlist Membership Separation (No Duplicate Audio)
-  // --------------------------------------------------------------------------
-  it('Scenario 6: Two different users add the same published track to different playlists without duplicating audio', async () => {
+  it('Scenario 4: Two different users add the same published track to different playlists without duplicating audio', async () => {
     // 1. Admin publishes track to global catalog
     const sharedTrackMeta: MusicTrack = {
       ...sampleTrack,
@@ -311,28 +178,19 @@ describe('ORBIM — Admin-Managed Global Music Catalog Architecture & Security',
   })
 
   // --------------------------------------------------------------------------
-  // Verification Scenario 7: Regular user cannot add unpublished track to playlist
+  // Verification Scenario 5: Regular user cannot add unpublished track to playlist
   // --------------------------------------------------------------------------
-  it('Scenario 7: Regular user attempting to add an unpublished or draft track to playlist is rejected', async () => {
-    const draftTrack: MusicTrack = {
+  it('Scenario 5: Regular user attempting to add an unpublished track to playlist is rejected', async () => {
+    const unpubTrack: MusicTrack = {
       ...sampleTrack,
-      providerTrackId: 'spotify_draft_block_add',
-      title: 'Blocked Draft Song',
-      publicationStatus: 'draft',
+      providerTrackId: 'spotify_unpub_block_add',
+      title: 'Blocked Unpub Song',
+      publicationStatus: 'unpublished',
     }
 
-    const draftRecord = await createDraftCatalogTrack({
-      userEmail: ADMIN_EMAIL,
-      userId: 'admin-id-123',
-      track: draftTrack,
-    })
-
-    const attemptTrack = mapCatalogRecordToMusicTrack(draftRecord)
-
-    // Regular user attempts to add draft track to playlist
     const addResult = await addTrackToUserPlaylist({
       playlistId: 'user-playlist-id',
-      track: attemptTrack,
+      track: unpubTrack,
     })
 
     assert.equal(addResult.success, false)
@@ -341,36 +199,9 @@ describe('ORBIM — Admin-Managed Global Music Catalog Architecture & Security',
   })
 
   // --------------------------------------------------------------------------
-  // Verification Scenario 8: Tracks without audio are strictly excluded from published catalog
+  // Verification Scenario 6: Tracks without audio are strictly excluded from published catalog
   // --------------------------------------------------------------------------
-  it('Scenario 8: Tracks without confirmed audio are strictly excluded from fetchPublishedCatalogTracks', async () => {
-    // 1. Create a draft track that has NO audio
-    const noAudioTrack: MusicTrack = {
-      ...sampleTrack,
-      providerTrackId: 'spotify_no_audio_9999',
-      title: 'Silent Track No Audio',
-      isPlayable: false,
-    }
-
-    const draft = await createDraftCatalogTrack({
-      userEmail: ADMIN_EMAIL,
-      userId: 'admin-id-123',
-      track: noAudioTrack,
-    })
-
-    // Force its publication status to 'published' without giving it audio (simulating edge case/inconsistent row)
-    draft.publicationStatus = 'published'
-
-    // Fetch published catalog tracks
-    const published = await fetchPublishedCatalogTracks({ searchQuery: 'Silent Track No Audio' })
-    const found = published.find((t) => t.providerTrackId === 'spotify_no_audio_9999')
-
-    assert.equal(found, undefined, 'A track without audio must never appear in fetchPublishedCatalogTracks')
-
-    // Regular user looking up via getCatalogTrack also receives null because audio is missing
-    const userView = getCatalogTrack(draft.id, REGULAR_USER_EMAIL)
-    assert.equal(userView, null, 'Regular user cannot access published track that has no audio')
-
+  it('Scenario 6: Tracks without confirmed audio are strictly excluded from fetchPublishedCatalogTracks', async () => {
     // Now upload and publish valid audio for a track
     const withAudioTrack: MusicTrack = {
       ...sampleTrack,

@@ -31,11 +31,27 @@
   },
   "spotify:track:test_audio_upload_01": {
     "providerTrackId": "spotify:track:test_audio_upload_01",
-    "audioUrl": "/assets/audio/global/1d1d6c35-2fa0-44d6-82f1-4d87567b117a.mp3",
-    "storagePath": "global/1d1d6c35-2fa0-44d6-82f1-4d87567b117a.mp3",
+    "audioUrl": "/assets/audio/global/4881fa4e-9b51-4f71-9729-e18c97c8de17.mp3",
+    "storagePath": "global/4881fa4e-9b51-4f71-9729-e18c97c8de17.mp3",
     "audioSourceType": "direct_stream",
     "title": "Test Track Title",
     "artistName": "Test Artist Name",
-    "updatedAt": "2026-11-03T06:52:16.962Z"
+    "updatedAt": "2026-11-04T03:27:09.809Z"
+  },
+  "server-test-track-888": {
+    "providerTrackId": "server-test-track-888",
+    "audioUrl": "/assets/audio/test.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "Server Song",
+    "artistName": "Server Artist",
+    "updatedAt": "2026-11-04T03:26:57.599Z"
+  },
+  "spotify:track:test_registry_track_1": {
+    "providerTrackId": "spotify:track:test_registry_track_1",
+    "audioUrl": "https://cdn.orbim.app/audio/test.mp3",
+    "audioSourceType": "storage",
+    "title": "Registry Track",
+    "artistName": "Registry Artist",
+    "updatedAt": "2026-11-04T03:27:09.821Z"
   }
 }

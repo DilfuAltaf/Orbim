@@ -3,9 +3,7 @@ import { useState } from 'react'
 
 import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
-import { useAuth } from '@/features/auth/auth-context'
 import { useToast } from '@/features/feedback/toast-context'
-import { sendPlaylistRemovalNotification } from '@/services/notification/notification-service'
 import { kickCollaboratorFromPlaylist } from '@/services/playlist/supabase-playlist'
 import type { Collaborator, Playlist } from '@/types/music'
 
@@ -25,7 +23,6 @@ export function KickCollaboratorDialog({
   onKicked,
 }: KickCollaboratorDialogProps) {
   const { notify } = useToast()
-  const { user } = useAuth()
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   if (!playlist || !collaborator) return null
@@ -48,22 +45,6 @@ export function KickCollaboratorDialog({
       })
       return
     }
-
-    // Tell the removed collaborator instead of dropping their access silently.
-    const senderDisplayName =
-      (user as unknown as { displayName?: string })?.displayName ||
-      user?.user_metadata?.display_name ||
-      user?.email?.split('@')[0] ||
-      playlist.owner.displayName
-
-    await sendPlaylistRemovalNotification({
-      recipientUserId: collaborator.id,
-      recipientDisplayName: collaborator.displayName,
-      playlistId: playlist.id,
-      playlistTitle: playlist.title,
-      senderUserId: user?.id || playlist.owner.id,
-      senderDisplayName,
-    })
 
     notify({
       tone: 'success',

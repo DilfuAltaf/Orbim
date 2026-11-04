@@ -14,7 +14,6 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
 import type { Plugin } from 'vite'
 import {
-  deleteServerAudioRecord,
   loadServerAudioRegistry,
   saveServerAudioRecord,
   type ServerAudioRecord,
@@ -23,7 +22,6 @@ import {
   acceptServerInvitation,
   addPlaylistCollaborator,
   createServerInvitation,
-  deleteServerNotification,
   deleteServerPlaylist,
   deleteServerPlaylistTrack,
   getFullServerPlaylist,
@@ -32,17 +30,13 @@ import {
   listServerInvitationsForPlaylist,
   listServerInvitationsForUser,
   loadPlaylistCollaborators,
-  loadServerNotifications,
   loadServerPlaylistTracks,
   loadServerUsers,
   removePlaylistCollaborator,
   respondToServerInvitation,
-  saveServerNotification,
   saveServerPlaylist,
   saveServerPlaylistTrack,
   saveServerUser,
-  updateNotificationStatus,
-  type ServerNotificationRecord,
   type ServerPlaylistRecord,
   type ServerPlaylistTrackRecord,
   type ServerUserRecord,
@@ -239,41 +233,6 @@ export function spotifyApiDevPlugin(): Plugin {
     }
 
     if (parsedUrl.pathname === '/api/audio/registry' || parsedUrl.pathname === '/api/spotify/audio-registry') {
-      if (req.method === 'DELETE') {
-        const queryTrackId = parsedUrl.searchParams.get('providerTrackId')
-        if (queryTrackId) {
-          deleteServerAudioRecord(queryTrackId)
-          res.writeHead(200, {
-            'Content-Type': 'application/json',
-            'Cache-Control': 'no-cache',
-          })
-          res.end(JSON.stringify({ success: true, deleted: true }))
-          return true
-        }
-
-        let body = ''
-        req.on('data', (chunk) => {
-          body += chunk
-        })
-        req.on('end', () => {
-          try {
-            const parsed = JSON.parse(body || '{}') as { providerTrackId?: string }
-            if (parsed.providerTrackId) {
-              deleteServerAudioRecord(parsed.providerTrackId)
-            }
-            res.writeHead(200, {
-              'Content-Type': 'application/json',
-              'Cache-Control': 'no-cache',
-            })
-            res.end(JSON.stringify({ success: true, deleted: true }))
-          } catch {
-            res.writeHead(400, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ error: 'Invalid JSON payload' }))
-          }
-        })
-        return true
-      }
-
       if (req.method === 'POST') {
         let body = ''
         req.on('data', (chunk) => {
@@ -282,8 +241,6 @@ export function spotifyApiDevPlugin(): Plugin {
         req.on('end', () => {
           try {
             const parsed = JSON.parse(body) as {
-              action?: string
-              delete?: boolean
               record?: ServerAudioRecord
               records?: Record<string, ServerAudioRecord>
               providerTrackId?: string
@@ -291,17 +248,6 @@ export function spotifyApiDevPlugin(): Plugin {
               storagePath?: string
               title?: string
               artistName?: string
-            }
-            if (parsed.delete || parsed.action === 'delete') {
-              if (parsed.providerTrackId) {
-                deleteServerAudioRecord(parsed.providerTrackId)
-              }
-              res.writeHead(200, {
-                'Content-Type': 'application/json',
-                'Cache-Control': 'no-cache',
-              })
-              res.end(JSON.stringify({ success: true, deleted: true }))
-              return
             }
             if (parsed.record) {
               saveServerAudioRecord(parsed.record)
@@ -584,100 +530,6 @@ export function spotifyApiDevPlugin(): Plugin {
       return true
     }
 
-    if (parsedUrl.pathname === '/api/notifications') {
-      if (req.method === 'DELETE') {
-        let body = ''
-        req.on('data', (c) => {
-          body += c
-        })
-        req.on('end', () => {
-          try {
-            const parsed = JSON.parse(body || '{}') as { id?: string }
-            const id = parsedUrl.searchParams.get('id') || parsed.id
-            if (id) {
-              deleteServerNotification(id)
-            }
-            res.writeHead(200, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ success: true, deleted: true }))
-          } catch {
-            res.writeHead(400, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ error: 'Invalid JSON' }))
-          }
-        })
-        return true
-      }
-
-      if (req.method === 'PATCH') {
-        let body = ''
-        req.on('data', (c) => {
-          body += c
-        })
-        req.on('end', () => {
-          try {
-            const parsed = JSON.parse(body || '{}') as {
-              id?: string
-              status?: 'accepted' | 'rejected'
-              userId?: string
-              displayName?: string
-            }
-            if (!parsed.id || !parsed.status) {
-              res.writeHead(400, { 'Content-Type': 'application/json' })
-              res.end(JSON.stringify({ error: 'Missing id or status' }))
-              return
-            }
-            const updated = updateNotificationStatus(
-              parsed.id,
-              parsed.status,
-              parsed.userId,
-              parsed.displayName,
-            )
-            res.writeHead(200, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ success: true, notification: updated }))
-          } catch {
-            res.writeHead(400, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ error: 'Invalid JSON' }))
-          }
-        })
-        return true
-      }
-
-      if (req.method === 'POST') {
-        let body = ''
-        req.on('data', (c) => {
-          body += c
-        })
-        req.on('end', () => {
-          try {
-            const parsed = JSON.parse(body || '{}') as ServerNotificationRecord
-            if (!parsed.id) {
-              parsed.id = `notif-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
-            }
-            if (!parsed.createdAt) {
-              parsed.createdAt = new Date().toISOString()
-            }
-            if (!parsed.status) {
-              parsed.status = 'pending'
-            }
-            saveServerNotification(parsed)
-            res.writeHead(200, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ success: true, notification: parsed }))
-          } catch {
-            res.writeHead(400, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ error: 'Invalid JSON' }))
-          }
-        })
-        return true
-      }
-
-      const userId = parsedUrl.searchParams.get('userId') || undefined
-      const email = parsedUrl.searchParams.get('email') || undefined
-      const displayName = parsedUrl.searchParams.get('displayName') || undefined
-      const notifications = loadServerNotifications({ userId, email, displayName })
-      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' })
-      res.end(JSON.stringify({ success: true, notifications }))
-      return true
-    }
-
     if (parsedUrl.pathname === '/api/playlists') {
       if (req.method === 'DELETE') {
         let body = ''
@@ -916,7 +768,6 @@ export function spotifyApiDevPlugin(): Plugin {
           req.url?.startsWith('/api/audio/') ||
           req.url?.startsWith('/api/users') ||
           req.url?.startsWith('/api/invitations') ||
-          req.url?.startsWith('/api/notifications') ||
           req.url?.startsWith('/api/playlists') ||
           req.url?.startsWith('/assets/audio/')
         ) {
@@ -934,7 +785,6 @@ export function spotifyApiDevPlugin(): Plugin {
           req.url?.startsWith('/api/audio/') ||
           req.url?.startsWith('/api/users') ||
           req.url?.startsWith('/api/invitations') ||
-          req.url?.startsWith('/api/notifications') ||
           req.url?.startsWith('/api/playlists') ||
           req.url?.startsWith('/assets/audio/')
         ) {

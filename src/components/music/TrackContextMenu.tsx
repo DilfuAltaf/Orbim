@@ -26,7 +26,6 @@ export type TrackContextMenuProps = {
   onAddToPlaylist?: (track: MusicTrack) => void
   onUploadAudio?: (track: MusicTrack) => void
   onReplaceAudio?: (track: MusicTrack) => void
-  onDeleteAudio?: (track: MusicTrack) => void
   onRemove?: (track: MusicTrack) => void
   queue?: MusicTrack[]
 }
@@ -39,7 +38,6 @@ export function TrackContextMenu({
   onAddToPlaylist,
   onUploadAudio,
   onReplaceAudio,
-  onDeleteAudio,
   onRemove,
   queue,
 }: TrackContextMenuProps) {
@@ -152,12 +150,6 @@ export function TrackContextMenu({
     onReplaceAudio?.(effectiveTrack)
   }
 
-  function handleDeleteClick(e: React.MouseEvent) {
-    e.stopPropagation()
-    onClose()
-    onDeleteAudio?.(effectiveTrack)
-  }
-
   function handleRemoveClick(e: React.MouseEvent) {
     e.stopPropagation()
     onClose()
@@ -264,31 +256,18 @@ export function TrackContextMenu({
           </>
         ) : null}
 
-        {isAdmin && effectiveTrack.isPlayable && (onReplaceAudio || onDeleteAudio) ? (
+        {isAdmin && effectiveTrack.isPlayable && onReplaceAudio ? (
           <>
             <div className="my-1 border-t border-border/50" />
-            {onReplaceAudio ? (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={handleReplaceClick}
-                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted hover:text-foreground hover:bg-surface/80 transition-colors"
-              >
-                <RotateCcw className="size-4 shrink-0" strokeWidth={1.75} />
-                <span>Ganti Audio</span>
-              </button>
-            ) : null}
-            {onDeleteAudio ? (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={handleDeleteClick}
-                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/15 hover:text-red-300 transition-colors"
-              >
-                <Trash2 className="size-4 shrink-0" strokeWidth={1.75} />
-                <span>Hapus Audio</span>
-              </button>
-            ) : null}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={handleReplaceClick}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted hover:text-foreground hover:bg-surface/80 transition-colors"
+            >
+              <RotateCcw className="size-4 shrink-0" strokeWidth={1.75} />
+              <span>Ganti Audio</span>
+            </button>
           </>
         ) : null}
 

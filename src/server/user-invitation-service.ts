@@ -83,22 +83,6 @@ export interface ServerCreateInvitationResult {
   errorKind?: InvitationFailureKind
 }
 
-export interface ServerNotificationRecord {
-  id: string
-  type: 'playlist_invitation' | 'playlist_removed'
-  recipientUserId: string
-  recipientDisplayName?: string
-  recipientEmail?: string
-  senderUserId: string
-  senderDisplayName: string
-  playlistId: string
-  playlistTitle: string
-  role: string
-  status: 'pending' | 'accepted' | 'rejected' | 'removed'
-  createdAt: string
-  rawToken?: string
-}
-
 export interface ServerPlaylistCollaborator {
   id: string
   playlistId: string
@@ -158,10 +142,6 @@ function getPlaylistsFilePath(): string {
 
 function getPlaylistTracksFilePath(): string {
   return path.resolve(process.cwd(), 'assets/users/playlist-tracks.json')
-}
-
-function getNotificationsFilePath(): string {
-  return path.resolve(process.cwd(), 'assets/users/notifications.json')
 }
 
 const DEFAULT_USERS: ServerUserRecord[] = [
@@ -853,6 +833,33 @@ export function deleteServerPlaylist(playlistId: string): void {
   } catch {
     // Non-blocking
   }
+
+  // Cascade tracks
+  try {
+    const remainingTracks = loadServerPlaylistTracks().filter((t) => t.playlist_id !== playlistId)
+    const filePath = getPlaylistTracksFilePath()
+    fs.writeFileSync(filePath, JSON.stringify(remainingTracks, null, 2), 'utf8')
+  } catch {
+    // Non-blocking
+  }
+
+  // Cascade collaborators
+  try {
+    const remainingCollabs = loadPlaylistCollaborators().filter((c) => c.playlistId !== playlistId)
+    const filePath = getCollaboratorsFilePath()
+    fs.writeFileSync(filePath, JSON.stringify(remainingCollabs, null, 2), 'utf8')
+  } catch {
+    // Non-blocking
+  }
+
+  // Cascade invitations
+  try {
+    const remainingInvs = loadServerInvitations().filter((i) => i.playlistId !== playlistId)
+    const filePath = getInvitationsFilePath()
+    fs.writeFileSync(filePath, JSON.stringify(remainingInvs, null, 2), 'utf8')
+  } catch {
+    // Non-blocking
+  }
 }
 
 export function loadServerPlaylistTracks(playlistId?: string): ServerPlaylistTrackRecord[] {
@@ -999,155 +1006,7 @@ export function getUserServerPlaylists(userQuery?: UserQueryParam): ServerPlayli
   return playlists.filter(
     (p) =>
       idSet.has(p.owner_id.toLowerCase()) ||
-      userCollabPlaylistIds.has(p.id) ||
-      p.visibility === 'shared',
+      userCollabPlaylistIds.has(p.id),
   )
 }
 
-export function loadServerNotifications(query?: UserQueryParam): ServerNotificationRecord[] {
-  try {
-    const filePath = getNotificationsFilePath()
-    if (fs.existsSync(filePath)) {
-      const content = fs.readFileSync(filePath, 'utf8')
-      const list = JSON.parse(content) as ServerNotificationRecord[]
-      if (Array.isArray(list)) {
-        if (!query) return list
-
-        const targetIds: string[] = []
-        if (typeof query === 'string') {
-          if (query.trim()) targetIds.push(query.trim().toLowerCase())
-        } else {
-          if (query.userId?.trim()) targetIds.push(query.userId.trim().toLowerCase())
-          if (query.email?.trim()) targetIds.push(query.email.trim().toLowerCase())
-          if (query.displayName?.trim()) targetIds.push(query.displayName.trim().toLowerCase())
-        }
-
-        if (targetIds.length === 0) return list
-
-        // Expand aliases from registered server users
-        try {
-          const serverUsers = loadServerUsers()
-          const matched = serverUsers.filter((u) =>
-            targetIds.includes(u.id.toLowerCase()) ||
-            targetIds.includes(u.email.toLowerCase()) ||
-            targetIds.includes(u.displayName.toLowerCase()),
-          )
-          for (const u of matched) {
-            targetIds.push(u.id.toLowerCase())
-            targetIds.push(u.email.toLowerCase())
-            targetIds.push(u.displayName.toLowerCase())
-          }
-        } catch {
-          // Non-blocking
-        }
-
-        const uniqueTargets = new Set(targetIds)
-
-        return list.filter((n) => {
-          const rId = n.recipientUserId ? n.recipientUserId.toLowerCase() : ''
-          const rEmail = n.recipientEmail ? n.recipientEmail.toLowerCase() : ''
-          const rName = n.recipientDisplayName ? n.recipientDisplayName.toLowerCase() : ''
-
-          return (
-            (rId && uniqueTargets.has(rId)) ||
-            (rEmail && uniqueTargets.has(rEmail)) ||
-            (rName && uniqueTargets.has(rName))
-          )
-        })
-      }
-    }
-  } catch {
-    // fallback
-  }
-  return []
-}
-
-export function saveServerNotification(notif: ServerNotificationRecord): void {
-  const current = loadServerNotifications()
-  const idx = current.findIndex((n) => n.id === notif.id)
-  if (idx >= 0) {
-    current[idx] = { ...current[idx], ...notif }
-  } else {
-    current.unshift(notif)
-  }
-
-  try {
-    const filePath = getNotificationsFilePath()
-    const dir = path.dirname(filePath)
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true })
-    }
-    fs.writeFileSync(filePath, JSON.stringify(current, null, 2), 'utf8')
-  } catch {
-    // Non-blocking
-  }
-}
-
-export function updateNotificationStatus(
-  id: string,
-  status: 'accepted' | 'rejected',
-  callerUserId?: string,
-  callerDisplayName?: string,
-): ServerNotificationRecord | null {
-  const current = loadServerNotifications()
-  const found = current.find((n) => n.id === id)
-  if (!found) return null
-
-  // Only the addressed recipient may change the invitation status.
-  if (callerUserId) {
-    const aliases = resolveServerUserAliases({
-      userId: callerUserId,
-      displayName: callerDisplayName,
-    })
-    const recipientValues = [found.recipientUserId, found.recipientEmail, found.recipientDisplayName]
-      .filter((value): value is string => Boolean(value))
-      .map((v) => v.toLowerCase().trim())
-    const matches = recipientValues.some((rVal) => {
-      if (aliases.has(rVal)) return true
-      for (const a of aliases) {
-        if (a === rVal || a.startsWith(rVal) || rVal.startsWith(a)) return true
-      }
-      return false
-    })
-    if (!matches) return null
-  }
-
-  found.status = status
-
-  try {
-    const filePath = getNotificationsFilePath()
-    fs.writeFileSync(filePath, JSON.stringify(current, null, 2), 'utf8')
-  } catch {
-    // Non-blocking
-  }
-
-  // If accepted, also register as collaborator on the playlist
-  if (status === 'accepted') {
-    const effectiveUserId = callerUserId || found.recipientUserId
-    const effectiveName = callerDisplayName || found.recipientDisplayName || 'Collaborator'
-
-    addPlaylistCollaborator({
-      playlistId: found.playlistId,
-      userId: effectiveUserId,
-      displayName: effectiveName,
-      role: found.role || 'editor',
-    })
-  }
-
-  return found
-}
-
-export function deleteServerNotification(id: string): boolean {
-  const current = loadServerNotifications()
-  const filtered = current.filter((n) => n.id !== id)
-  if (filtered.length !== current.length) {
-    try {
-      const filePath = getNotificationsFilePath()
-      fs.writeFileSync(filePath, JSON.stringify(filtered, null, 2), 'utf8')
-      return true
-    } catch {
-      // Non-blocking
-    }
-  }
-  return false
-}

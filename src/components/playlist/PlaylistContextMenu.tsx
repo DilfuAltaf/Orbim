@@ -26,7 +26,7 @@ export function PlaylistContextMenu({
 }: PlaylistContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
   const { playQueue } = usePlayer()
 
   useEffect(() => {
@@ -68,7 +68,7 @@ export function PlaylistContextMenu({
   const clampedX = Math.max(10, Math.min(position.x, screenWidth - menuWidth - 10))
   const clampedY = Math.max(10, Math.min(position.y, screenHeight - menuHeight - 10))
 
-  const isOwner = user ? playlist.owner.id === user.id : isOwnedByViewer(playlist)
+  const isOwner = user ? playlist.owner.id === user.id || isAdmin : isOwnedByViewer(playlist)
   const tracks = playlistTracks(playlist)
 
   function handlePlay(e: React.MouseEvent) {

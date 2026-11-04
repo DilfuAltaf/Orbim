@@ -9,9 +9,11 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient, type AuthUser as User } from '@supabase/supabase-js'
 import fs from 'node:fs'
 import path from 'node:path'
+
+export type { User }
 
 export interface SupabaseServerConfig {
   supabaseUrl: string | null

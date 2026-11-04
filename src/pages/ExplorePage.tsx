@@ -2,7 +2,6 @@ import { AlertCircle, Play, Plus, RotateCcw, Search, SlidersHorizontal, Sparkles
 import { useEffect, useMemo, useState } from 'react'
 
 import { PageHeader } from '@/components/layout/PageHeader'
-import { DeleteAudioDialog } from '@/components/music/DeleteAudioDialog'
 import { SpotifyTrackUploadDialog } from '@/components/music/SpotifyTrackUploadDialog'
 import { SearchBar } from '@/components/music/SearchBar'
 import { TrackCard } from '@/components/music/TrackCard'
@@ -26,8 +25,6 @@ import {
 } from '@/services/audio/global-audio-registry'
 import {
   fetchPublishedCatalogTracks,
-  fetchAdminCatalogTracks,
-  mapCatalogRecordToMusicTrack,
 } from '@/services/catalog/global-catalog-service'
 import type { MusicTrack } from '@/types/music'
 
@@ -68,12 +65,11 @@ export function ExplorePage() {
     [isDemoMode],
   )
 
-  const [adminTab, setAdminTab] = useState<'published' | 'drafts' | 'spotify'>('published')
+  const [adminTab, setAdminTab] = useState<'published' | 'spotify'>('published')
 
   const [query, setQuery] = useState('')
   const [genre, setGenre] = useState<string | null>(ALL_GENRES)
   const [retryCount, setRetryCount] = useState(0)
-  const [trackToDeleteAudio, setTrackToDeleteAudio] = useState<MusicTrack | null>(null)
   const [trackToAddToPlaylist, setTrackToAddToPlaylist] = useState<MusicTrack | null>(null)
   const [isUploadOpen, setIsUploadOpen] = useState(false)
   const [preselectedTrackForUpload, setPreselectedTrackForUpload] = useState<MusicTrack | null>(null)
@@ -92,7 +88,7 @@ export function ExplorePage() {
   // For regular users, Explore strictly queries the published catalog.
   // For admin, it queries depending on the selected admin tab.
   const hasQuery = debouncedValue.trim().length > 0
-  const isCatalogBrowse = !isDemoMode && (!isAdmin || adminTab === 'published' || adminTab === 'drafts')
+  const isCatalogBrowse = !isDemoMode && (!isAdmin || adminTab === 'published')
   const shouldSearch = isDemoMode || hasQuery || isCatalogBrowse
   const isStale =
     shouldSearch && (search.forQuery !== debouncedValue || search.forGenre !== genre)
@@ -181,40 +177,7 @@ export function ExplorePage() {
       }
     }
 
-    // 2. Admin in Drafts tab: strictly fetch drafts and unpublished tracks
-    if (!isDemoMode && isAdmin && adminTab === 'drafts') {
-      fetchAdminCatalogTracks({ status: 'draft' })
-        .then((records) => {
-          if (controller.signal.aborted) return
-          const tracks = records.map((r) => {
-            const mapped = mapCatalogRecordToMusicTrack(r)
-            return resolveEffectiveTrack(mapped) || mapped
-          })
-          setSearch({
-            results: tracks,
-            isLoading: false,
-            error: null,
-            forQuery: debouncedValue,
-            forGenre: genre,
-          })
-        })
-        .catch((err: unknown) => {
-          if (controller.signal.aborted) return
-          const message = err instanceof Error ? err.message : 'Unable to load draft tracks.'
-          setSearch({
-            results: [],
-            isLoading: false,
-            error: message,
-            forQuery: debouncedValue,
-            forGenre: genre,
-          })
-        })
-      return () => {
-        controller.abort()
-      }
-    }
-
-    // 3. Demo mode OR Admin in Spotify search tab: search external Spotify catalog
+    // 2. Demo mode OR Admin in Spotify search tab: search external Spotify catalog
     provider
       .searchTracks(debouncedValue, { genre, signal: controller.signal })
       .then(async (tracks) => {
@@ -483,13 +446,6 @@ export function ExplorePage() {
                   }
                 : undefined
             }
-            onDeleteAudio={
-              isAdmin && track.isPlayable
-                ? (t) => {
-                    setTrackToDeleteAudio(t)
-                  }
-                : undefined
-            }
           />
         ))}
       </div>
@@ -551,21 +507,6 @@ export function ExplorePage() {
             )}
           >
             Published Catalog
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setAdminTab('drafts')
-              setQuery('')
-            }}
-            className={cn(
-              'rounded-md px-3 py-1 font-medium transition-colors',
-              adminTab === 'drafts'
-                ? 'bg-accent text-accent-contrast shadow-sm'
-                : 'text-muted hover:text-foreground',
-            )}
-          >
-            Drafts & Unpublished
           </button>
           <button
             type="button"
@@ -685,15 +626,6 @@ export function ExplorePage() {
           {renderResults()}
         </section>
       </div>
-
-      <DeleteAudioDialog
-        open={Boolean(trackToDeleteAudio)}
-        onClose={() => setTrackToDeleteAudio(null)}
-        track={trackToDeleteAudio}
-        onSuccess={() => {
-          setRetryCount((c) => c + 1)
-        }}
-      />
 
       <SpotifyTrackUploadDialog
         open={isUploadOpen}

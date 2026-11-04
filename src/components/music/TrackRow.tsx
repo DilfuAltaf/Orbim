@@ -25,7 +25,6 @@ type TrackRowProps = {
   onAdd?: (track: MusicTrack) => void
   onAttachAudio?: (track: MusicTrack) => void
   onUploadAudio?: (track: MusicTrack) => void
-  onDeleteAudio?: (track: MusicTrack) => void
   onReplaceAudio?: (track: MusicTrack) => void
   onRemove?: (track: MusicTrack) => void
 }
@@ -40,7 +39,6 @@ export function TrackRow({
   onAdd,
   onAttachAudio,
   onUploadAudio,
-  onDeleteAudio,
   onReplaceAudio,
   onRemove,
 }: TrackRowProps) {
@@ -258,16 +256,6 @@ export function TrackRow({
               <Upload aria-hidden="true" className="size-4" strokeWidth={1.75} />
             </IconButton>
           ) : null}
-          {effectiveTrack.isPlayable && onDeleteAudio && isAdmin ? (
-            <IconButton
-              label={`Hapus audio dari ${track.title}`}
-              size="sm"
-              onClick={() => onDeleteAudio(effectiveTrack)}
-              className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 text-muted hover:text-red-400"
-            >
-              <Trash2 aria-hidden="true" className="size-4" strokeWidth={1.75} />
-            </IconButton>
-          ) : null}
           {onRemove ? (
             <IconButton
               label={`Remove ${track.title} from playlist`}
@@ -289,7 +277,6 @@ export function TrackRow({
         onAddToPlaylist={onAdd}
         onUploadAudio={effectiveUploadAction}
         onReplaceAudio={onReplaceAudio}
-        onDeleteAudio={onDeleteAudio}
         onRemove={onRemove}
         queue={queue}
       />

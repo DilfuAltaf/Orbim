@@ -28,7 +28,7 @@ export function PlaylistCard({
   onEdit: propOnEdit,
   onDelete: propOnDelete,
 }: PlaylistCardProps) {
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
   const { currentTrack, isPlaying, playQueue, togglePlayback } = usePlayer()
 
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null)
@@ -37,7 +37,7 @@ export function PlaylistCard({
   const [isDeleteOpen, setIsDeleteOpen] = useState(false)
 
   const tracks = playlistTracks(playlist)
-  const isOwned = user ? playlist.owner.id === user.id : isOwnedByViewer(playlist)
+  const isOwned = user ? playlist.owner.id === user.id || isAdmin : isOwnedByViewer(playlist)
   const isPlayingFromPlaylist =
     currentTrack !== null && tracks.some((track) => track.providerTrackId === currentTrack.providerTrackId)
   const isActive = isPlayingFromPlaylist && isPlaying

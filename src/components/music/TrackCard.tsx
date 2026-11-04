@@ -1,4 +1,4 @@
-import { ExternalLink, MoreVertical, Pause, Play, Plus, RotateCcw, Trash2, Upload } from 'lucide-react'
+import { ExternalLink, MoreVertical, Pause, Play, Plus, RotateCcw, Upload } from 'lucide-react'
 import { useState } from 'react'
 
 import { TrackArtwork } from '@/components/music/TrackArtwork'
@@ -18,7 +18,6 @@ type TrackCardProps = {
   queue: MusicTrack[]
   onAdd?: (track: MusicTrack) => void
   onUploadAudio?: (track: MusicTrack) => void
-  onDeleteAudio?: (track: MusicTrack) => void
   onReplaceAudio?: (track: MusicTrack) => void
   className?: string
 }
@@ -28,7 +27,6 @@ export function TrackCard({
   queue,
   onAdd,
   onUploadAudio,
-  onDeleteAudio,
   onReplaceAudio,
   className,
 }: TrackCardProps) {
@@ -186,18 +184,6 @@ export function TrackCard({
                   <RotateCcw aria-hidden="true" className="size-4" strokeWidth={1.75} />
                 </IconButton>
               ) : null}
-
-              {onDeleteAudio && effectiveTrack.isPlayable && isAdmin ? (
-                <IconButton
-                  label={`Hapus audio dari ${effectiveTrack.title}`}
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onDeleteAudio(effectiveTrack)}
-                  className="size-9 border-red-500/30 bg-background/60 text-red-400 backdrop-blur hover:bg-red-500/20"
-                >
-                  <Trash2 aria-hidden="true" className="size-4" strokeWidth={1.75} />
-                </IconButton>
-              ) : null}
             </div>
           </div>
 
@@ -268,7 +254,6 @@ export function TrackCard({
         onAddToPlaylist={onAdd}
         onUploadAudio={onUploadAudio}
         onReplaceAudio={onReplaceAudio}
-        onDeleteAudio={onDeleteAudio}
         queue={queue}
       />
     </>

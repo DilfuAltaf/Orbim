@@ -24,7 +24,6 @@ import { useToast } from '@/features/feedback/toast-context'
 import { formatDuration } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import {
-  createDraftCatalogTrack,
   mapCatalogRecordToMusicTrack,
   uploadAndPublishCatalogTrack,
   validateCatalogAudioFile,
@@ -210,52 +209,6 @@ export function SpotifyTrackUploadDialog({
     }
   }
 
-  async function handleSaveMetadataOnly() {
-    setSubmitError(null)
-
-    if (!isAdmin) {
-      setSubmitError('Hanya akun administrator yang diizinkan menyimpan draft.')
-      return
-    }
-
-    if (!selectedTrack) {
-      setSubmitError('Pilih lagu terlebih dahulu.')
-      return
-    }
-
-    setIsSubmitting(true)
-    setSubmitStepText('Menyimpan draft lagu...')
-
-    try {
-      const draft = await createDraftCatalogTrack({
-        userEmail: user?.email,
-        userId: user?.id,
-        track: selectedTrack,
-      })
-
-      const draftTrack = mapCatalogRecordToMusicTrack(draft)
-
-      notify({
-        title: 'Draft Disimpan',
-        description: `"${selectedTrack.title}" disimpan sebagai draft di katalog ORBIM.`,
-        tone: 'info',
-      })
-
-      if (onSuccess) {
-        onSuccess(draftTrack, draftTrack)
-      }
-
-      handleReset()
-      onClose()
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err)
-      setSubmitError(msg)
-    } finally {
-      setIsSubmitting(false)
-      setSubmitStepText('')
-    }
-  }
-
   function handleReset() {
     setStep(preselectedTrack ? 'upload' : 'search')
     if (!preselectedTrack) {
@@ -311,38 +264,26 @@ export function SpotifyTrackUploadDialog({
             </Button>
 
             {step === 'upload' ? (
-              <>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={handleSaveMetadataOnly}
-                  disabled={isSubmitting || !isAdmin}
-                  title={!isAdmin ? 'Only admin can add tracks' : undefined}
-                >
-                  Save (No Audio)
-                </Button>
-
-                <Button
-                  type="button"
-                  variant="primary"
-                  onClick={handleSubmit}
-                  disabled={isSubmitting || !isAdmin}
-                  title={!isAdmin ? 'Only admin can publish audio' : undefined}
-                  className="gap-2 bg-accent text-accent-contrast hover:bg-accent-hover shadow-md shadow-accent/20"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 aria-hidden="true" className="size-4 animate-spin" />
-                      <span>{submitStepText || 'Publishing...'}</span>
-                    </>
-                  ) : (
-                    <>
-                      <Upload aria-hidden="true" className="size-4" />
-                      <span>Publish Audio to All Users</span>
-                    </>
-                  )}
-                </Button>
-              </>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={handleSubmit}
+                disabled={isSubmitting || !isAdmin}
+                title={!isAdmin ? 'Only admin can publish audio' : undefined}
+                className="gap-2 bg-accent text-accent-contrast hover:bg-accent-hover shadow-md shadow-accent/20"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+                    <span>{submitStepText || 'Publishing...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload aria-hidden="true" className="size-4" />
+                    <span>Publish Audio to All Users</span>
+                  </>
+                )}
+              </Button>
             ) : null}
           </div>
         </div>

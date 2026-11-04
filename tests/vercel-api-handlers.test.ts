@@ -17,7 +17,6 @@ import invitationAcceptHandler from '../api/invitations/accept.ts'
 import playlistsHandler from '../api/playlists/index.ts'
 import playlistTracksHandler from '../api/playlists/tracks.ts'
 import playlistCollaboratorsHandler from '../api/playlists/collaborators.ts'
-import notificationsHandler from '../api/notifications/index.ts'
 import { _resetServerTokenCacheForTesting } from '../src/server/spotify-service.ts'
 
 interface MockResponseCapture {
@@ -207,7 +206,7 @@ describe('Vercel Serverless Function Endpoints Suite', () => {
   describe('5. /api/audio/registry', () => {
     const testTrackId = 'spotify:track:test_registry_track_1'
 
-    it('saves a record via POST and deletes it via DELETE', async () => {
+    it('saves a record via POST and retrieves via GET', async () => {
       // 1. POST record
       const postReq = createMockReq({
         method: 'POST',
@@ -233,16 +232,7 @@ describe('Vercel Serverless Function Endpoints Suite', () => {
       const getData = getRes.getJson<{ success: boolean; records: Record<string, unknown> }>()
       assert.equal(getData.success, true)
       assert.ok(getData.records)
-
-      // 3. DELETE record
-      const delReq = createMockReq({
-        method: 'DELETE',
-        url: `/api/audio/registry?providerTrackId=${encodeURIComponent(testTrackId)}`,
-      })
-      const delRes = createMockRes()
-      await audioRegistryHandler(delReq, delRes.res)
-      assert.equal(delRes.getStatusCode(), 200)
-      assert.equal(delRes.getJson<{ success: boolean; deleted: boolean }>().deleted, true)
+      assert.ok(getData.records[testTrackId])
     })
   })
 
@@ -375,6 +365,15 @@ describe('Vercel Serverless Function Endpoints Suite', () => {
       await invitationRespondHandler(respReq, respRes.res)
       assert.equal(respRes.getStatusCode(), 200)
       assert.equal(respRes.getJson<{ success: boolean }>().success, true)
+
+      // Cleanup seeded test playlist and associated records
+      const delReq = createMockReq({
+        method: 'DELETE',
+        url: `/api/playlists?playlistId=${encodeURIComponent(testPlaylistId)}`,
+      })
+      const delRes = createMockRes()
+      await playlistsHandler(delReq, delRes.res)
+      assert.equal(delRes.getStatusCode(), 200)
     })
   })
 
@@ -462,71 +461,7 @@ describe('Vercel Serverless Function Endpoints Suite', () => {
     })
   })
 
-  describe('9. /api/notifications', () => {
-    it('creates, queries, patches status, and deletes notification', async () => {
-      const notifId = `notif-test-${Date.now()}`
-      const targetUser = `user-notif-target-${Date.now()}`
-
-      // 1. POST
-      const postReq = createMockReq({
-        method: 'POST',
-        url: '/api/notifications',
-        headers: { 'content-type': 'application/json' },
-        body: {
-          id: notifId,
-          type: 'playlist_invitation',
-          recipientUserId: targetUser,
-          senderUserId: 'sender-user',
-          senderDisplayName: 'Sender Name',
-          playlistId: 'pl-1',
-          playlistTitle: 'Playlist Title',
-          role: 'editor',
-          status: 'pending',
-          createdAt: new Date().toISOString(),
-        },
-      })
-      const postRes = createMockRes()
-      await notificationsHandler(postReq, postRes.res)
-      assert.equal(postRes.getStatusCode(), 200)
-
-      // 2. GET
-      const getReq = createMockReq({
-        method: 'GET',
-        url: `/api/notifications?userId=${encodeURIComponent(targetUser)}`,
-      })
-      const getRes = createMockRes()
-      await notificationsHandler(getReq, getRes.res)
-      assert.equal(getRes.getStatusCode(), 200)
-      const notifs = getRes.getJson<{ success: boolean; notifications: Array<{ id: string }> }>().notifications
-      assert.ok(notifs.some((n) => n.id === notifId))
-
-      // 3. PATCH
-      const patchReq = createMockReq({
-        method: 'PATCH',
-        url: '/api/notifications',
-        headers: { 'content-type': 'application/json' },
-        body: {
-          id: notifId,
-          status: 'accepted',
-        },
-      })
-      const patchRes = createMockRes()
-      await notificationsHandler(patchReq, patchRes.res)
-      assert.equal(patchRes.getStatusCode(), 200)
-
-      // 4. DELETE
-      const delReq = createMockReq({
-        method: 'DELETE',
-        url: `/api/notifications?id=${encodeURIComponent(notifId)}`,
-      })
-      const delRes = createMockRes()
-      await notificationsHandler(delReq, delRes.res)
-      assert.equal(delRes.getStatusCode(), 200)
-      assert.equal(delRes.getJson<{ success: boolean; deleted: boolean }>().deleted, true)
-    })
-  })
-
-  describe('10. /api/audio/stream', () => {
+  describe('9. /api/audio/stream', () => {
     it('blocks directory traversal with 403 Forbidden', () => {
       const req = createMockReq({
         method: 'GET',

@@ -1,9 +1,8 @@
-import { ArrowRight, Compass, Globe2, Music, Pause, Play, Trash2, Upload } from 'lucide-react'
+import { ArrowRight, Compass, Globe2, Music, Pause, Play, Upload } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { SectionHeader } from '@/components/layout/SectionHeader'
-import { DeleteAudioDialog } from '@/components/music/DeleteAudioDialog'
 import { SpotifyTrackUploadDialog } from '@/components/music/SpotifyTrackUploadDialog'
 import { TrackArtwork } from '@/components/music/TrackArtwork'
 import { TrackRow } from '@/components/music/TrackRow'
@@ -40,7 +39,6 @@ export function HomePage() {
   const [recentOffset, setRecentOffset] = useState(0)
 
   // Audio CRUD dialog states
-  const [trackToDeleteAudio, setTrackToDeleteAudio] = useState<MusicTrack | null>(null)
   const [trackToAddToPlaylist, setTrackToAddToPlaylist] = useState<MusicTrack | null>(null)
   const [isUploadOpen, setIsUploadOpen] = useState(false)
   const [preselectedTrackForUpload, setPreselectedTrackForUpload] = useState<MusicTrack | null>(null)
@@ -254,15 +252,6 @@ export function HomePage() {
                         <Upload className="size-3" />
                         Ganti Audio
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setTrackToDeleteAudio(featuredTrack)}
-                        className="h-7 gap-1 px-2 text-[11px] text-red-400 hover:bg-red-500/10 hover:text-red-300"
-                      >
-                        <Trash2 className="size-3" />
-                        Hapus Audio
-                      </Button>
                     </div>
                   ) : (
                     <span className="text-[11px] text-accent">Ready to stream</span>
@@ -371,13 +360,6 @@ export function HomePage() {
                         }
                       : undefined
                   }
-                  onDeleteAudio={
-                    isAdmin
-                      ? (t) => {
-                          setTrackToDeleteAudio(t)
-                        }
-                      : undefined
-                  }
                 />
               ))}
             </ul>
@@ -403,15 +385,6 @@ export function HomePage() {
           </div>
         )}
       </section>
-
-      <DeleteAudioDialog
-        open={Boolean(trackToDeleteAudio)}
-        onClose={() => setTrackToDeleteAudio(null)}
-        track={trackToDeleteAudio}
-        onSuccess={() => {
-          void refreshRecent()
-        }}
-      />
 
       <SpotifyTrackUploadDialog
         open={isUploadOpen}

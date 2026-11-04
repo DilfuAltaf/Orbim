@@ -1,6 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import {
-  deleteServerAudioRecord,
   loadServerAudioRegistry,
   saveServerAudioRecord,
   type ServerAudioRecord,
@@ -13,35 +12,10 @@ import {
 } from '../../src/server/supabase-server.ts'
 
 export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const parsedUrl = new URL(req.url || '/', 'http://127.0.0.1:5173')
-
-  // DELETE
-  if (req.method === 'DELETE') {
-    const queryTrackId = parsedUrl.searchParams.get('providerTrackId')
-    if (queryTrackId) {
-      deleteServerAudioRecord(queryTrackId)
-      sendJson(res, 200, { success: true, deleted: true })
-      return
-    }
-
-    try {
-      const parsed = await parseJsonBody<{ providerTrackId?: string }>(req)
-      if (parsed.providerTrackId) {
-        deleteServerAudioRecord(parsed.providerTrackId)
-      }
-      sendJson(res, 200, { success: true, deleted: true })
-    } catch {
-      sendError(res, 400, 'Invalid JSON payload')
-    }
-    return
-  }
-
   // POST
   if (req.method === 'POST') {
     try {
       const parsed = await parseJsonBody<{
-        action?: string
-        delete?: boolean
         record?: ServerAudioRecord
         records?: Record<string, ServerAudioRecord>
         providerTrackId?: string
@@ -50,14 +24,6 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         title?: string
         artistName?: string
       }>(req)
-
-      if (parsed.delete || parsed.action === 'delete') {
-        if (parsed.providerTrackId) {
-          deleteServerAudioRecord(parsed.providerTrackId)
-        }
-        sendJson(res, 200, { success: true, deleted: true })
-        return
-      }
 
       if (parsed.record) {
         saveServerAudioRecord(parsed.record)

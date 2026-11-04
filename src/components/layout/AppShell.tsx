@@ -3,7 +3,6 @@ import { Link, Outlet } from 'react-router-dom'
 
 import { AppSidebar } from '@/components/layout/AppSidebar'
 import { MobileNavigation } from '@/components/layout/MobileNavigation'
-import { NotificationBell } from '@/components/notification/NotificationBell'
 import { LyricsPanel } from '@/components/music/LyricsPanel'
 import { MusicPlayer } from '@/components/music/MusicPlayer'
 import { Badge } from '@/components/ui/Badge'
@@ -91,7 +90,6 @@ export function AppShell() {
           </div>
 
           <div className="flex items-center gap-2.5">
-            <NotificationBell />
             <Badge tone={isDemo ? 'accent' : 'violet'} className="py-0.5">
               {isDemo ? 'Demo' : 'Live'}
             </Badge>

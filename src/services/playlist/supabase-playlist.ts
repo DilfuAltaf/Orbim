@@ -1315,15 +1315,65 @@ export async function updateSupabasePlaylist(params: {
 export async function deleteSupabasePlaylist(
   playlistId: string,
 ): Promise<{ error: Error | null }> {
-  // Check if target is a local playlist
+  let wasDeletedLocallyOrOnServer = false
+
+  // 1. Check if target is a local playlist
   const localList = getLocalPlaylists()
   if (localList.some((p) => p.id === playlistId)) {
     deleteLocalPlaylist(playlistId)
+    wasDeletedLocallyOrOnServer = true
+  }
+
+  // 2. Cascade delete on server API (/api/playlists)
+  try {
+    if (typeof fetch === 'function') {
+      const authHeaders = await getSupabaseAuthHeaders()
+      const res = await fetch(`/api/playlists?playlistId=${encodeURIComponent(playlistId)}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
+        body: JSON.stringify({ playlistId }),
+      })
+      if (res.ok) {
+        wasDeletedLocallyOrOnServer = true
+      }
+    }
+  } catch {
+    // Non-blocking server delete
+  }
+
+  // 3. Delete from Supabase if valid UUID
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (UUID_REGEX.test(playlistId)) {
+    try {
+      const { data: authData } = await supabase.auth.getUser()
+      if (authData?.user) {
+        const { error } = await supabase
+          .from('playlists')
+          .delete()
+          .eq('id', playlistId)
+        if (error) {
+          if (!wasDeletedLocallyOrOnServer) {
+            return { error }
+          }
+        }
+        return { error: null }
+      }
+    } catch {
+      if (wasDeletedLocallyOrOnServer) {
+        return { error: null }
+      }
+    }
+  }
+
+  if (wasDeletedLocallyOrOnServer) {
     return { error: null }
   }
 
   const { data: authData } = await supabase.auth.getUser()
-  if (!authData.user) {
+  if (!authData?.user) {
     return { error: new Error('Authentication required to delete a playlist.') }
   }
 

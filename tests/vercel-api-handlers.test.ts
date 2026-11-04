@@ -3,20 +3,28 @@ import { EventEmitter } from 'node:events'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { describe, it } from 'node:test'
 
-import spotifyHealthHandler from '../api/spotify/health.ts'
-import spotifySearchHandler from '../api/spotify/search.ts'
-import spotifyLyricsHandler from '../api/spotify/lyrics.ts'
-import audioUploadHandler from '../api/audio/upload.ts'
-import audioRegistryHandler from '../api/audio/registry.ts'
-import audioStreamHandler from '../api/audio/stream.ts'
+import {
+  spotifyHealthHandler,
+  spotifyLyricsHandler,
+  spotifySearchHandler,
+} from '../src/server/api-handlers/spotify-handlers.ts'
+import {
+  audioRegistryHandler,
+  audioStreamHandler,
+  audioUploadHandler,
+} from '../src/server/api-handlers/audio-handlers.ts'
 import usersHandler from '../api/users/index.ts'
-import invitationsHandler from '../api/invitations/index.ts'
-import invitationPreviewHandler from '../api/invitations/preview.ts'
-import invitationRespondHandler from '../api/invitations/respond.ts'
-import invitationAcceptHandler from '../api/invitations/accept.ts'
-import playlistsHandler from '../api/playlists/index.ts'
-import playlistTracksHandler from '../api/playlists/tracks.ts'
-import playlistCollaboratorsHandler from '../api/playlists/collaborators.ts'
+import {
+  invitationAcceptHandler,
+  invitationIndexHandler as invitationsHandler,
+  invitationPreviewHandler,
+  invitationRespondHandler,
+} from '../src/server/api-handlers/invitation-handlers.ts'
+import {
+  playlistCollaboratorsHandler,
+  playlistTracksHandler,
+  playlistsIndexHandler as playlistsHandler,
+} from '../src/server/api-handlers/playlist-handlers.ts'
 import { _resetServerTokenCacheForTesting } from '../src/server/spotify-service.ts'
 
 interface MockResponseCapture {

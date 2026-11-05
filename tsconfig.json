@@ -23,6 +23,13 @@
     "moduleResolution": "nodenext",
     /* Required by moduleResolution: nodenext, which wants explicit extensions. */
     "allowImportingTsExtensions": true,
+    /*
+     * Vercel's Node builder transpiles api/** and src/server/** file-by-file and
+     * keeps relative specifiers verbatim. Without this, the emitted .js imports
+     * point at `*.ts` files that were emitted as `*.js`, so every /api/*
+     * function crashes at import time with ERR_MODULE_NOT_FOUND.
+     */
+    "rewriteRelativeImportExtensions": true,
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
     "noEmit": true,

@@ -18,6 +18,7 @@ type PlaylistTrackListProps = {
   onAddTrack?: () => void
   onAttachAudio?: (track: MusicTrack) => void
   onRemoveTrack?: (track: MusicTrack) => void
+  canRemoveTrack?: (track: MusicTrack, entry: PlaylistTrackEntry) => boolean
 }
 
 const columnTemplate =
@@ -32,6 +33,7 @@ export function PlaylistTrackList({
   onAddTrack,
   onAttachAudio,
   onRemoveTrack,
+  canRemoveTrack,
 }: PlaylistTrackListProps) {
   const { isAdmin } = useAuth()
   const entries = trackEntries ?? playlist.trackEntries
@@ -155,20 +157,23 @@ export function PlaylistTrackList({
       </div>
 
       <ul className="mt-1">
-        {entries.map((entry, index) => (
-          <TrackRow
-            key={`${entry.track.providerTrackId}-${entry.addedAt}-${index}`}
-            track={entry.track}
-            position={index + 1}
-            queue={tracks}
-            queueLabel={playlist.title}
-            addedBy={entry.addedBy}
-            addedAt={entry.addedAt}
-            onAdd={onAdd}
-            onAttachAudio={onAttachAudio}
-            onRemove={onRemoveTrack}
-          />
-        ))}
+        {entries.map((entry, index) => {
+          const removable = onRemoveTrack && (!canRemoveTrack || canRemoveTrack(entry.track, entry))
+          return (
+            <TrackRow
+              key={`${entry.track.providerTrackId}-${entry.addedAt}-${index}`}
+              track={entry.track}
+              position={index + 1}
+              queue={tracks}
+              queueLabel={playlist.title}
+              addedBy={entry.addedBy}
+              addedAt={entry.addedAt}
+              onAdd={onAdd}
+              onAttachAudio={onAttachAudio}
+              onRemove={removable ? onRemoveTrack : undefined}
+            />
+          )
+        })}
       </ul>
     </section>
   )

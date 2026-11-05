@@ -4,10 +4,16 @@ import { getDataSource, isSupabaseConfigured, supabase } from '@/lib/supabase'
 import {
   getActiveLocalUser,
   setActiveLocalUser,
-  saveLocalUser,
-  findLocalUserByEmail,
+  registerLocalUser,
+  authenticateLocalUser,
   type LocalUser,
 } from '@/services/auth/local-auth-store'
+import {
+  DUPLICATE_ACCOUNT_MESSAGE,
+  normalizeIdentifier,
+  validateIdentifier,
+  validateNewPassword,
+} from '@/lib/auth-credentials'
 import { isUserAdmin } from './admin'
 import { AuthContext, type AuthContextValue, type Profile } from './auth-context'
 
@@ -48,6 +54,36 @@ function createMockSession(user: User): Session {
     token_type: 'bearer',
     user,
   }
+}
+
+/**
+ * Turns Supabase Auth errors into short, actionable messages. Supabase rejects
+ * identifiers it considers malformed and, while "Confirm email" is enabled,
+ * refuses to sign in accounts that have not opened a confirmation email.
+ */
+function describeAuthError(error: unknown, fallback: string): Error {
+  const rawMessage =
+    error instanceof Error ? error.message : typeof error === 'string' ? error : ''
+  const message = rawMessage.toLowerCase()
+
+  if (message.includes('unable to validate email')) {
+    return new Error(
+      'Supabase Auth does not accept that identifier format. It needs an @ and a domain part, for example you@example.com.',
+    )
+  }
+  if (message.includes('email not confirmed')) {
+    return new Error(
+      'This account still requires email confirmation. Open the confirmation link, or disable "Confirm email" in the Supabase dashboard to sign in without an inbox.',
+    )
+  }
+  if (message.includes('invalid login credentials') || message.includes('invalid credentials')) {
+    return new Error('Incorrect email or identifier, or incorrect password.')
+  }
+  if (message.includes('already registered')) {
+    return new Error(DUPLICATE_ACCOUNT_MESSAGE)
+  }
+
+  return rawMessage ? new Error(rawMessage) : new Error(fallback)
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -192,13 +228,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = useCallback(
     async (email: string, password: string) => {
-      const cleanEmail = email.trim()
-      if (!cleanEmail || !cleanEmail.includes('@')) {
-        return { error: new Error('Please enter a valid email address containing @.') }
+      const identifierError = validateIdentifier(email)
+      if (identifierError) {
+        return { error: new Error(identifierError) }
       }
       if (!password) {
-        return { error: new Error('Please enter your password.') }
+        return { error: new Error('Enter your password.') }
       }
+      const cleanEmail = normalizeIdentifier(email)
 
       // 1. Sign in against the real Supabase project in live mode. Never
       // impersonate a Supabase account with a local mock identity: the
@@ -221,7 +258,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return { error: null }
           }
 
-          return { error: error && error.message ? new Error(error.message) : new Error('Sign-in failed.') }
+          return { error: describeAuthError(error, 'Sign-in failed.') }
         } catch (err) {
           return {
             error: err instanceof Error ? err : new Error(String(err)),
@@ -230,16 +267,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       // 2. Only demo mode (or when Supabase is not configured) continues with
-      // the seamless local identity.
-      const localUser: LocalUser = findLocalUserByEmail(cleanEmail) || {
-        id: crypto.randomUUID(),
-        email: cleanEmail,
-        displayName: cleanEmail.split('@')[0],
-        password,
-        createdAt: new Date().toISOString(),
+      // the local identity store, which verifies the stored password.
+      const { user: localUser, error: localError } = authenticateLocalUser(cleanEmail, password)
+      if (localError || !localUser) {
+        return { error: new Error(localError || 'Sign-in failed.') }
       }
 
-      saveLocalUser(localUser)
       setActiveLocalUser(localUser)
 
       const mockUser = createMockSupabaseUser(localUser)
@@ -257,14 +290,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = useCallback(
     async (email: string, password: string, displayName: string) => {
-      const cleanEmail = email.trim()
-      if (!cleanEmail || !cleanEmail.includes('@')) {
+      const identifierError = validateIdentifier(email)
+      if (identifierError) {
         return {
-          error: new Error('Please enter a valid email address containing @.'),
+          error: new Error(identifierError),
           user: null,
         }
       }
 
+      const cleanEmail = normalizeIdentifier(email)
       const cleanDisplayName = displayName.trim() || cleanEmail.split('@')[0]
       if (cleanDisplayName.length < 2 || cleanDisplayName.length > 50) {
         return {
@@ -273,16 +307,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      if (password.length < 6) {
+      const passwordError = validateNewPassword(password)
+      if (passwordError) {
         return {
-          error: new Error('Password must be at least 6 characters.'),
+          error: new Error(passwordError),
           user: null,
         }
       }
 
       // Real Supabase registration in live mode: surface real errors instead of
       // silently creating a local identity.
-      const localAccountForEmail = findLocalUserByEmail(cleanEmail)
       if (configured && getDataSource() !== 'demo') {
         try {
           const { data, error } = await supabase.auth.signUp({
@@ -298,7 +332,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
           if (error) {
             return {
-              error,
+              error: describeAuthError(error, 'Registration failed.'),
+              user: null,
+            }
+          }
+
+          // Supabase returns a user with no identities when the identifier is
+          // already registered (rather than an error that would allow account
+          // enumeration), so surface that as a duplicate registration.
+          if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+            return {
+              error: new Error(DUPLICATE_ACCOUNT_MESSAGE),
               user: null,
             }
           }
@@ -328,9 +372,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             if (signInError || !signInData.session || !signInData.user) {
               return {
-                error:
-                  signInError ??
-                  new Error('Account created, but automatic sign-in failed. Please sign in.'),
+                error: describeAuthError(
+                  signInError,
+                  'Account created, but automatic sign-in failed. Please sign in.',
+                ),
                 user: data.user,
               }
             }
@@ -355,16 +400,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       // Seamless instantaneous sign-up fallback (no email confirmation needed, no rate limits)
-      const localUserId = localAccountForEmail?.id || crypto.randomUUID()
-      const localUser: LocalUser = {
-        id: localUserId,
-        email: cleanEmail,
-        displayName: cleanDisplayName,
+      const { user: registeredLocalUser, error: registrationError } = registerLocalUser(
+        cleanEmail,
         password,
-        createdAt: localAccountForEmail?.createdAt || new Date().toISOString(),
+        cleanDisplayName,
+      )
+      if (registrationError || !registeredLocalUser) {
+        return {
+          error: new Error(registrationError || 'Registration failed.'),
+          user: null,
+        }
       }
 
-      saveLocalUser(localUser)
+      const localUser = registeredLocalUser
       setActiveLocalUser(localUser)
 
       const mockUser = createMockSupabaseUser(localUser)

@@ -31,12 +31,12 @@
   },
   "spotify:track:test_audio_upload_01": {
     "providerTrackId": "spotify:track:test_audio_upload_01",
-    "audioUrl": "/assets/audio/global/4881fa4e-9b51-4f71-9729-e18c97c8de17.mp3",
-    "storagePath": "global/4881fa4e-9b51-4f71-9729-e18c97c8de17.mp3",
+    "audioUrl": "/assets/audio/global/312f3e75-c11a-49e5-8c67-aeff67aaaca1.mp3",
+    "storagePath": "global/312f3e75-c11a-49e5-8c67-aeff67aaaca1.mp3",
     "audioSourceType": "direct_stream",
     "title": "Test Track Title",
     "artistName": "Test Artist Name",
-    "updatedAt": "2026-11-04T03:27:09.809Z"
+    "updatedAt": "2026-11-05T06:01:45.213Z"
   },
   "server-test-track-888": {
     "providerTrackId": "server-test-track-888",
@@ -44,7 +44,7 @@
     "audioSourceType": "direct_stream",
     "title": "Server Song",
     "artistName": "Server Artist",
-    "updatedAt": "2026-11-04T03:26:57.599Z"
+    "updatedAt": "2026-11-05T06:01:34.718Z"
   },
   "spotify:track:test_registry_track_1": {
     "providerTrackId": "spotify:track:test_registry_track_1",
@@ -52,6 +52,190 @@
     "audioSourceType": "storage",
     "title": "Registry Track",
     "artistName": "Registry Artist",
-    "updatedAt": "2026-11-04T03:27:09.821Z"
+    "updatedAt": "2026-11-05T06:01:45.220Z"
+  },
+  "142PiXzA84lmEw2RstFHFa": {
+    "providerTrackId": "142PiXzA84lmEw2RstFHFa",
+    "audioUrl": "https://rprrvdyugakkpittzvjv.supabase.co/storage/v1/object/public/track-audio/48c883a4-5774-47d6-a961-d53b25f960df/a34d4c04-2bcc-4703-ab60-9fd4a8e3be1e.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "supernatural",
+    "artistName": "Ariana Grande",
+    "updatedAt": "2026-11-05T02:13:54.969Z"
+  },
+  "6HU7h9RYOaPRFeh0R3UeAr": {
+    "providerTrackId": "6HU7h9RYOaPRFeh0R3UeAr",
+    "audioUrl": "https://rprrvdyugakkpittzvjv.supabase.co/storage/v1/object/public/track-audio/48c883a4-5774-47d6-a961-d53b25f960df/72699cd6-aa84-4166-816a-e6c5ce588036.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "deja vu",
+    "artistName": "Olivia Rodrigo",
+    "updatedAt": "2026-11-05T02:17:45.589Z"
+  },
+  "1v1oIWf2Xgh54kIWuKsDf6": {
+    "providerTrackId": "1v1oIWf2Xgh54kIWuKsDf6",
+    "audioUrl": "https://rprrvdyugakkpittzvjv.supabase.co/storage/v1/object/public/track-audio/48c883a4-5774-47d6-a961-d53b25f960df/1d463a16-4ea1-4f48-80bc-6e59b515efb2.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "Runaway",
+    "artistName": "AURORA",
+    "updatedAt": "2026-11-05T02:18:40.631Z"
+  },
+  "7xoUc6faLbCqZO6fQEYprd": {
+    "providerTrackId": "7xoUc6faLbCqZO6fQEYprd",
+    "audioUrl": "https://rprrvdyugakkpittzvjv.supabase.co/storage/v1/object/public/track-audio/96e20d19-6a61-4938-b765-b226e9f2ccbb/e4515def-1071-4f82-bcdd-35ae804a9bc3.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "One Last Time",
+    "artistName": "Ariana Grande",
+    "updatedAt": "2026-11-05T02:23:02.074Z"
+  },
+  "6dOtVTDdiauQNBQEDOtlAB": {
+    "providerTrackId": "6dOtVTDdiauQNBQEDOtlAB",
+    "audioUrl": "https://rprrvdyugakkpittzvjv.supabase.co/storage/v1/object/public/track-audio/96e20d19-6a61-4938-b765-b226e9f2ccbb/03b5fcd2-d729-4431-9a84-c63651622419.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "BIRDS OF A FEATHER",
+    "artistName": "Billie Eilish",
+    "updatedAt": "2026-11-05T02:28:59.501Z"
+  },
+  "76FZM38RC8XaAjJ77CVTNe": {
+    "providerTrackId": "76FZM38RC8XaAjJ77CVTNe",
+    "audioUrl": "https://rprrvdyugakkpittzvjv.supabase.co/storage/v1/object/public/track-audio/96e20d19-6a61-4938-b765-b226e9f2ccbb/9a1aed8b-d1ba-491d-9ba5-e638ebe951da.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "Into You",
+    "artistName": "Ariana Grande",
+    "updatedAt": "2026-11-05T02:29:14.127Z"
+  },
+  "0UOG0zUn7t8m8QcxfzR7AH": {
+    "providerTrackId": "0UOG0zUn7t8m8QcxfzR7AH",
+    "audioUrl": "https://rprrvdyugakkpittzvjv.supabase.co/storage/v1/object/public/track-audio/96e20d19-6a61-4938-b765-b226e9f2ccbb/e71023d4-bcd2-4c5f-ae46-42f77ac54f4f.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "Merry Christmas, Please Don't Call",
+    "artistName": "Bleachers",
+    "updatedAt": "2026-11-05T02:30:54.658Z"
+  },
+  "6IPwKM3fUUzlElbvKw2sKl": {
+    "providerTrackId": "6IPwKM3fUUzlElbvKw2sKl",
+    "audioUrl": "https://rprrvdyugakkpittzvjv.supabase.co/storage/v1/object/public/track-audio/96e20d19-6a61-4938-b765-b226e9f2ccbb/55c44dbe-daba-4ab0-bb86-b1e3bb09c0aa.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "we fell in love in october",
+    "artistName": "girl in red",
+    "updatedAt": "2026-11-05T02:35:21.426Z"
+  },
+  "2mdEsXPu8ZmkHRRtAdC09e": {
+    "providerTrackId": "2mdEsXPu8ZmkHRRtAdC09e",
+    "audioUrl": "https://rprrvdyugakkpittzvjv.supabase.co/storage/v1/object/public/track-audio/96e20d19-6a61-4938-b765-b226e9f2ccbb/6946a218-68d9-481a-a4f5-bd07c73bedc8.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "Cinnamon Girl",
+    "artistName": "Lana Del Rey",
+    "updatedAt": "2026-11-05T02:36:47.035Z"
+  },
+  "3BJe4B8zGnqEdQPMvfVjuS": {
+    "providerTrackId": "3BJe4B8zGnqEdQPMvfVjuS",
+    "audioUrl": "https://rprrvdyugakkpittzvjv.supabase.co/storage/v1/object/public/track-audio/96e20d19-6a61-4938-b765-b226e9f2ccbb/902b0d82-6a36-4d78-b9e5-9eda5e1f2b0f.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "Summertime Sadness",
+    "artistName": "Lana Del Rey",
+    "updatedAt": "2026-11-05T02:36:58.949Z"
+  },
+  "0DuWDLjriRPjDRoPgaCslY": {
+    "providerTrackId": "0DuWDLjriRPjDRoPgaCslY",
+    "audioUrl": "https://rprrvdyugakkpittzvjv.supabase.co/storage/v1/object/public/track-audio/96e20d19-6a61-4938-b765-b226e9f2ccbb/8ded23d2-3634-40c4-8c63-649ca4fefc70.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "Love In The Dark",
+    "artistName": "Adele",
+    "updatedAt": "2026-11-05T02:38:18.585Z"
+  },
+  "1UPB5rYJ0bzn6mNSoAHrZC": {
+    "providerTrackId": "1UPB5rYJ0bzn6mNSoAHrZC",
+    "audioUrl": "https://rprrvdyugakkpittzvjv.supabase.co/storage/v1/object/public/track-audio/96e20d19-6a61-4938-b765-b226e9f2ccbb/cd640ac8-6472-4238-9aef-607251dedd27.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "You'll Be in My Heart",
+    "artistName": "NIKI",
+    "updatedAt": "2026-11-05T02:49:57.430Z"
+  },
+  "5wANPM4fQCJwkGd4rN57mH": {
+    "providerTrackId": "5wANPM4fQCJwkGd4rN57mH",
+    "audioUrl": "https://rprrvdyugakkpittzvjv.supabase.co/storage/v1/object/public/track-audio/96e20d19-6a61-4938-b765-b226e9f2ccbb/6f60f5d0-58fb-4dd1-9c1f-bc67f084adb1.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "drivers license",
+    "artistName": "Olivia Rodrigo",
+    "updatedAt": "2026-11-05T02:50:41.019Z"
+  },
+  "21acb66djKRlDPJOXRBCkc": {
+    "providerTrackId": "21acb66djKRlDPJOXRBCkc",
+    "audioUrl": "https://rprrvdyugakkpittzvjv.supabase.co/storage/v1/object/public/track-audio/96e20d19-6a61-4938-b765-b226e9f2ccbb/dd36911c-649f-4ab3-a226-f3392935f3c0.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "Take A Chance With Me",
+    "artistName": "NIKI",
+    "updatedAt": "2026-11-05T02:50:53.583Z"
+  },
+  "6gkbtMtioHgtyGjrMel6ei": {
+    "providerTrackId": "6gkbtMtioHgtyGjrMel6ei",
+    "audioUrl": "https://rprrvdyugakkpittzvjv.supabase.co/storage/v1/object/public/track-audio/96e20d19-6a61-4938-b765-b226e9f2ccbb/743ae435-017f-4af3-8ec7-3ccb5d8ffda0.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "drop dead",
+    "artistName": "Olivia Rodrigo",
+    "updatedAt": "2026-11-05T02:55:27.511Z"
+  },
+  "2tGvwE8GcFKwNdAXMnlbfl": {
+    "providerTrackId": "2tGvwE8GcFKwNdAXMnlbfl",
+    "audioUrl": "https://rprrvdyugakkpittzvjv.supabase.co/storage/v1/object/public/track-audio/96e20d19-6a61-4938-b765-b226e9f2ccbb/b6d6e47f-6204-48f7-97b8-004ae1c01495.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "happier",
+    "artistName": "Olivia Rodrigo",
+    "updatedAt": "2026-11-05T02:56:02.719Z"
+  },
+  "5CZ40GBx1sQ9agT82CLQCT": {
+    "providerTrackId": "5CZ40GBx1sQ9agT82CLQCT",
+    "audioUrl": "https://rprrvdyugakkpittzvjv.supabase.co/storage/v1/object/public/track-audio/96e20d19-6a61-4938-b765-b226e9f2ccbb/44cabb33-d01b-4710-a8a0-80a392ac216e.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "traitor",
+    "artistName": "Olivia Rodrigo",
+    "updatedAt": "2026-11-05T02:56:44.881Z"
+  },
+  "0ug5NqcwcFR2xrfTkc7k8e": {
+    "providerTrackId": "0ug5NqcwcFR2xrfTkc7k8e",
+    "audioUrl": "https://rprrvdyugakkpittzvjv.supabase.co/storage/v1/object/public/track-audio/96e20d19-6a61-4938-b765-b226e9f2ccbb/e1e9dfd9-61a7-4506-885f-f2395f5ced6e.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "Style",
+    "artistName": "Taylor Swift",
+    "updatedAt": "2026-11-05T03:03:00.480Z"
+  },
+  "4qW3BbQAwZsrnu8a3ZRdyT": {
+    "providerTrackId": "4qW3BbQAwZsrnu8a3ZRdyT",
+    "audioUrl": "https://rprrvdyugakkpittzvjv.supabase.co/storage/v1/object/public/track-audio/96e20d19-6a61-4938-b765-b226e9f2ccbb/e0ad00b0-8aad-4641-97d2-086f6a546de3.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "Self Aware",
+    "artistName": "Temper City",
+    "updatedAt": "2026-11-05T03:03:46.187Z"
+  },
+  "0FIDCNYYjNvPVimz5icugS": {
+    "providerTrackId": "0FIDCNYYjNvPVimz5icugS",
+    "audioUrl": "https://rprrvdyugakkpittzvjv.supabase.co/storage/v1/object/public/track-audio/96e20d19-6a61-4938-b765-b226e9f2ccbb/2f3bf7a5-e530-45e9-b1b9-ad2f1d5106a0.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "Timeless (feat Playboi Carti)",
+    "artistName": "The Weeknd, Playboi Carti",
+    "updatedAt": "2026-11-05T03:05:18.068Z"
+  },
+  "3qhlB30KknSejmIvZZLjOD": {
+    "providerTrackId": "3qhlB30KknSejmIvZZLjOD",
+    "audioUrl": "https://rprrvdyugakkpittzvjv.supabase.co/storage/v1/object/public/track-audio/96e20d19-6a61-4938-b765-b226e9f2ccbb/ff19ae73-5db7-4e3d-bdd2-4b89ef2936a5.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "End of Beginning",
+    "artistName": "Djo",
+    "updatedAt": "2026-11-05T03:14:52.607Z"
+  },
+  "0XYALktGbnHJ1TdW0Oz5KN": {
+    "providerTrackId": "0XYALktGbnHJ1TdW0Oz5KN",
+    "audioUrl": "https://rprrvdyugakkpittzvjv.supabase.co/storage/v1/object/public/track-audio/96e20d19-6a61-4938-b765-b226e9f2ccbb/2691716f-5205-4301-906d-c4c55d372665.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "What If I Call (Merry Christmas, i miss you)",
+    "artistName": "Alex Crichton",
+    "updatedAt": "2026-11-05T03:15:50.587Z"
+  },
+  "55pBIZO1cqoldeqpp5WR7H": {
+    "providerTrackId": "55pBIZO1cqoldeqpp5WR7H",
+    "audioUrl": "https://rprrvdyugakkpittzvjv.supabase.co/storage/v1/object/public/track-audio/96e20d19-6a61-4938-b765-b226e9f2ccbb/24ccbe14-9140-4776-84e4-bfad7f92b330.mp3",
+    "audioSourceType": "direct_stream",
+    "title": "the cure",
+    "artistName": "Olivia Rodrigo",
+    "updatedAt": "2026-11-05T03:16:56.096Z"
   }
 }

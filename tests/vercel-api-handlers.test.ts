@@ -25,6 +25,10 @@ import {
   playlistTracksHandler,
   playlistsIndexHandler as playlistsHandler,
 } from '../src/server/api-handlers/playlist-handlers.ts'
+import audioDispatcher from '../api/audio/[route].ts'
+import spotifyDispatcher from '../api/spotify/[route].ts'
+import invitationsDispatcher from '../api/invitations/[route].ts'
+import playlistsDispatcher from '../api/playlists/[route].ts'
 import { _resetServerTokenCacheForTesting } from '../src/server/spotify-service.ts'
 
 interface MockResponseCapture {
@@ -378,6 +382,7 @@ describe('Vercel Serverless Function Endpoints Suite', () => {
       const delReq = createMockReq({
         method: 'DELETE',
         url: `/api/playlists?playlistId=${encodeURIComponent(testPlaylistId)}`,
+        headers: { authorization: `Bearer orbim-local-access-token-${testOwnerId}` },
       })
       const delRes = createMockRes()
       await playlistsHandler(delReq, delRes.res)
@@ -461,11 +466,334 @@ describe('Vercel Serverless Function Endpoints Suite', () => {
       const delReq = createMockReq({
         method: 'DELETE',
         url: `/api/playlists?playlistId=${encodeURIComponent(plId)}`,
+        headers: { authorization: 'Bearer orbim-local-access-token-test-user-owner' },
       })
       const delRes = createMockRes()
       await playlistsHandler(delReq, delRes.res)
       assert.equal(delRes.getStatusCode(), 200)
       assert.equal(delRes.getJson<{ success: boolean; deleted: boolean }>().deleted, true)
+    })
+
+    it('handles DELETE /api/playlists/tracks with validation, authentication, and authorization', async () => {
+      const testPlId = `pl-del-tracks-${Date.now()}`
+      const track1Owner = `tr-del-1-${Date.now()}`
+      const track2Collab = `tr-del-2-${Date.now()}`
+      const track3Admin = `tr-del-3-${Date.now()}`
+      const ownerId = 'owner-del-test'
+      const collabId = 'collab-del-test'
+      const viewerId = 'viewer-del-test'
+      const intruderId = 'intruder-del-test'
+      const adminId = 'usr-admin-dilfu' // email: dilfualtaf07@gmail.com
+
+      // 1. Create test playlist
+      const createReq = createMockReq({
+        method: 'POST',
+        url: '/api/playlists',
+        headers: { 'content-type': 'application/json' },
+        body: {
+          id: testPlId,
+          title: 'Track Deletion Playlist',
+          owner_id: ownerId,
+          visibility: 'private',
+        },
+      })
+      const createRes = createMockRes()
+      await playlistsHandler(createReq, createRes.res)
+      assert.equal(createRes.getStatusCode(), 200)
+
+      // 2. Add editor collaborator
+      const colReq = createMockReq({
+        method: 'POST',
+        url: '/api/playlists/collaborators',
+        headers: { 'content-type': 'application/json' },
+        body: {
+          playlistId: testPlId,
+          userId: collabId,
+          displayName: 'Collab Editor',
+          role: 'editor',
+        },
+      })
+      const colRes = createMockRes()
+      await playlistCollaboratorsHandler(colReq, colRes.res)
+      assert.equal(colRes.getStatusCode(), 200)
+
+      // 2b. Add viewer collaborator
+      const viewerReq = createMockReq({
+        method: 'POST',
+        url: '/api/playlists/collaborators',
+        headers: { 'content-type': 'application/json' },
+        body: {
+          playlistId: testPlId,
+          userId: viewerId,
+          displayName: 'Collab Viewer',
+          role: 'viewer',
+        },
+      })
+      const viewerRes = createMockRes()
+      await playlistCollaboratorsHandler(viewerReq, viewerRes.res)
+      assert.equal(viewerRes.getStatusCode(), 200)
+
+      // 3. Add tracks:
+      // Track 1 added by owner
+      const track1Req = createMockReq({
+        method: 'POST',
+        url: '/api/playlists/tracks',
+        headers: { 'content-type': 'application/json' },
+        body: {
+          track: {
+            id: track1Owner,
+            playlist_id: testPlId,
+            provider: 'spotify',
+            provider_track_id: 'test-del-track-1',
+            title: 'Owner Track',
+            artist_name: 'Removal Artist',
+            duration_seconds: 120,
+            position: 1,
+            added_by: ownerId,
+            created_at: new Date().toISOString(),
+          },
+        },
+      })
+      const track1Res = createMockRes()
+      await playlistTracksHandler(track1Req, track1Res.res)
+      assert.equal(track1Res.getStatusCode(), 200)
+
+      // Track 2 added by collab (editor)
+      const track2Req = createMockReq({
+        method: 'POST',
+        url: '/api/playlists/tracks',
+        headers: { 'content-type': 'application/json' },
+        body: {
+          track: {
+            id: track2Collab,
+            playlist_id: testPlId,
+            provider: 'spotify',
+            provider_track_id: 'test-del-track-2',
+            title: 'Collab Track',
+            artist_name: 'Collab Artist',
+            duration_seconds: 150,
+            position: 2,
+            added_by: collabId,
+            created_at: new Date().toISOString(),
+          },
+        },
+      })
+      const track2Res = createMockRes()
+      await playlistTracksHandler(track2Req, track2Res.res)
+      assert.equal(track2Res.getStatusCode(), 200)
+
+      // Track 3 added by owner (for admin test)
+      const track3Req = createMockReq({
+        method: 'POST',
+        url: '/api/playlists/tracks',
+        headers: { 'content-type': 'application/json' },
+        body: {
+          track: {
+            id: track3Admin,
+            playlist_id: testPlId,
+            provider: 'spotify',
+            provider_track_id: 'test-del-track-3',
+            title: 'Track For Admin',
+            artist_name: 'Admin Target Artist',
+            duration_seconds: 200,
+            position: 3,
+            added_by: ownerId,
+            created_at: new Date().toISOString(),
+          },
+        },
+      })
+      const track3Res = createMockRes()
+      await playlistTracksHandler(track3Req, track3Res.res)
+      assert.equal(track3Res.getStatusCode(), 200)
+
+      // --- Security Phase 1 Tests ---
+
+      // Test A: Missing playlistId or trackId (400)
+      const missingParamReq = createMockReq({
+        method: 'DELETE',
+        url: '/api/playlists/tracks',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer orbim-local-access-token-${ownerId}`,
+        },
+        body: { playlistId: testPlId },
+      })
+      const missingParamRes = createMockRes()
+      await playlistTracksHandler(missingParamReq, missingParamRes.res)
+      assert.equal(missingParamRes.getStatusCode(), 400)
+
+      // Test B: DELETE without Authorization returns 401
+      const unauthReq = createMockReq({
+        method: 'DELETE',
+        url: `/api/playlists/tracks?playlistId=${testPlId}&trackId=${track1Owner}`,
+      })
+      const unauthRes = createMockRes()
+      await playlistTracksHandler(unauthReq, unauthRes.res)
+      assert.equal(unauthRes.getStatusCode(), 401)
+      assert.match(unauthRes.getJson<{ error: string }>().error, /Authentication required/i)
+
+      // Test C: DELETE with ?userId=<owner-id> but without Authorization returns 401
+      const bypassQueryReq = createMockReq({
+        method: 'DELETE',
+        url: `/api/playlists/tracks?playlistId=${testPlId}&trackId=${track1Owner}&userId=${ownerId}`,
+      })
+      const bypassQueryRes = createMockRes()
+      await playlistTracksHandler(bypassQueryReq, bypassQueryRes.res)
+      assert.equal(bypassQueryRes.getStatusCode(), 401)
+
+      // Test D: DELETE with a forged request-body userId returns 401
+      const bypassBodyReq = createMockReq({
+        method: 'DELETE',
+        url: '/api/playlists/tracks',
+        headers: { 'content-type': 'application/json' },
+        body: { playlistId: testPlId, trackId: track1Owner, userId: ownerId },
+      })
+      const bypassBodyRes = createMockRes()
+      await playlistTracksHandler(bypassBodyReq, bypassBodyRes.res)
+      assert.equal(bypassBodyRes.getStatusCode(), 401)
+
+      // Test E: Invalid or expired tokens return 401
+      const invalidTokenReq = createMockReq({
+        method: 'DELETE',
+        url: `/api/playlists/tracks?playlistId=${testPlId}&trackId=${track1Owner}`,
+        headers: { authorization: 'Bearer invalid-or-expired-token-xyz' },
+      })
+      const invalidTokenRes = createMockRes()
+      await playlistTracksHandler(invalidTokenReq, invalidTokenRes.res)
+      assert.equal(invalidTokenRes.getStatusCode(), 401)
+      assert.match(invalidTokenRes.getJson<{ error: string }>().error, /Invalid or expired/i)
+
+      // Test F: Non-member attempting removal returns 403
+      const unauthorizedReq = createMockReq({
+        method: 'DELETE',
+        url: `/api/playlists/tracks?playlistId=${testPlId}&trackId=${track1Owner}`,
+        headers: { authorization: `Bearer orbim-local-access-token-${intruderId}` },
+      })
+      const unauthorizedRes = createMockRes()
+      await playlistTracksHandler(unauthorizedReq, unauthorizedRes.res)
+      assert.equal(unauthorizedRes.getStatusCode(), 403)
+
+      // --- Security Phase 2 Tests ---
+
+      // Test G: Viewer attempting removal returns 403
+      const viewerRemoveReq = createMockReq({
+        method: 'DELETE',
+        url: `/api/playlists/tracks?playlistId=${testPlId}&trackId=${track1Owner}`,
+        headers: { authorization: `Bearer orbim-local-access-token-${viewerId}` },
+      })
+      const viewerRemoveRes = createMockRes()
+      await playlistTracksHandler(viewerRemoveReq, viewerRemoveRes.res)
+      assert.equal(viewerRemoveRes.getStatusCode(), 403)
+      assert.match(viewerRemoveRes.getJson<{ error: string }>().error, /viewers cannot remove tracks/i)
+
+      // Test H: Editor attempting to remove another user's track (track1 added by owner) returns 403
+      const editorRemoveOthersReq = createMockReq({
+        method: 'DELETE',
+        url: `/api/playlists/tracks?playlistId=${testPlId}&trackId=${track1Owner}`,
+        headers: { authorization: `Bearer orbim-local-access-token-${collabId}` },
+      })
+      const editorRemoveOthersRes = createMockRes()
+      await playlistTracksHandler(editorRemoveOthersReq, editorRemoveOthersRes.res)
+      assert.equal(editorRemoveOthersRes.getStatusCode(), 403)
+      assert.match(editorRemoveOthersRes.getJson<{ error: string }>().error, /editors can only remove tracks they added/i)
+
+      // Test I: Editor removing their own track (track2 added by collab) returns 200
+      const editorRemoveOwnReq = createMockReq({
+        method: 'DELETE',
+        url: `/api/playlists/tracks?playlistId=${testPlId}&trackId=${track2Collab}`,
+        headers: { authorization: `Bearer orbim-local-access-token-${collabId}` },
+      })
+      const editorRemoveOwnRes = createMockRes()
+      await playlistTracksHandler(editorRemoveOwnReq, editorRemoveOwnRes.res)
+      assert.equal(editorRemoveOwnRes.getStatusCode(), 200)
+      assert.equal(editorRemoveOwnRes.getJson<{ success: boolean; removed: boolean }>().removed, true)
+
+      // Test J: Owner removing another user's track (add track again by collab, owner removes it)
+      const track2ReAddReq = createMockReq({
+        method: 'POST',
+        url: '/api/playlists/tracks',
+        headers: { 'content-type': 'application/json' },
+        body: {
+          track: {
+            id: track2Collab,
+            playlist_id: testPlId,
+            provider: 'spotify',
+            provider_track_id: 'test-del-track-2',
+            title: 'Collab Track Re-Added',
+            artist_name: 'Collab Artist',
+            duration_seconds: 150,
+            position: 2,
+            added_by: collabId,
+            created_at: new Date().toISOString(),
+          },
+        },
+      })
+      const track2ReAddRes = createMockRes()
+      await playlistTracksHandler(track2ReAddReq, track2ReAddRes.res)
+      assert.equal(track2ReAddRes.getStatusCode(), 200)
+
+      const ownerRemoveOtherReq = createMockReq({
+        method: 'DELETE',
+        url: `/api/playlists/tracks?playlistId=${testPlId}&trackId=${track2Collab}`,
+        headers: { authorization: `Bearer orbim-local-access-token-${ownerId}` },
+      })
+      const ownerRemoveOtherRes = createMockRes()
+      await playlistTracksHandler(ownerRemoveOtherReq, ownerRemoveOtherRes.res)
+      assert.equal(ownerRemoveOtherRes.getStatusCode(), 200)
+      assert.equal(ownerRemoveOtherRes.getJson<{ success: boolean; removed: boolean }>().removed, true)
+
+      // Test K: Platform Administrator removing any track (admin removes track3)
+      const adminRemoveReq = createMockReq({
+        method: 'DELETE',
+        url: `/api/playlists/tracks?playlistId=${testPlId}&trackId=${track3Admin}`,
+        headers: { authorization: `Bearer orbim-local-access-token-${adminId}` },
+      })
+      const adminRemoveRes = createMockRes()
+      await playlistTracksHandler(adminRemoveReq, adminRemoveRes.res)
+      assert.equal(adminRemoveRes.getStatusCode(), 200)
+      assert.equal(adminRemoveRes.getJson<{ success: boolean; removed: boolean }>().removed, true)
+
+      // Test L: Non-existent playlist (404)
+      const notFoundReq = createMockReq({
+        method: 'DELETE',
+        url: `/api/playlists/tracks?playlistId=non-existent-pl&trackId=${track1Owner}`,
+        headers: { authorization: `Bearer orbim-local-access-token-${ownerId}` },
+      })
+      const notFoundRes = createMockRes()
+      await playlistTracksHandler(notFoundReq, notFoundRes.res)
+      assert.equal(notFoundRes.getStatusCode(), 404)
+
+      // Test M: Valid authenticated owner removes their own track (track1)
+      const ownerRemoveOwnReq = createMockReq({
+        method: 'DELETE',
+        url: `/api/playlists/tracks?playlistId=${testPlId}&trackId=${track1Owner}`,
+        headers: { authorization: `Bearer orbim-local-access-token-${ownerId}` },
+      })
+      const ownerRemoveOwnRes = createMockRes()
+      await playlistTracksHandler(ownerRemoveOwnReq, ownerRemoveOwnRes.res)
+      assert.equal(ownerRemoveOwnRes.getStatusCode(), 200)
+      assert.equal(ownerRemoveOwnRes.getJson<{ success: boolean; removed: boolean }>().removed, true)
+
+      // Test N: Safe/idempotent handling when track is already removed (200, notFound: true)
+      const idempotentReq = createMockReq({
+        method: 'DELETE',
+        url: `/api/playlists/tracks?playlistId=${testPlId}&trackId=${track1Owner}`,
+        headers: { authorization: `Bearer orbim-local-access-token-${ownerId}` },
+      })
+      const idempotentRes = createMockRes()
+      await playlistTracksHandler(idempotentReq, idempotentRes.res)
+      assert.equal(idempotentRes.getStatusCode(), 200)
+      assert.equal(idempotentRes.getJson<{ notFound: boolean }>().notFound, true)
+
+      // Cleanup playlist
+      const cleanReq = createMockReq({
+        method: 'DELETE',
+        url: `/api/playlists?playlistId=${encodeURIComponent(testPlId)}`,
+        headers: { authorization: `Bearer orbim-local-access-token-${ownerId}` },
+      })
+      const cleanRes = createMockRes()
+      await playlistsHandler(cleanReq, cleanRes.res)
+      assert.equal(cleanRes.getStatusCode(), 200)
     })
   })
 
@@ -496,6 +824,89 @@ describe('Vercel Serverless Function Endpoints Suite', () => {
       const location = res.getHeaders()['Location']
       assert.ok(typeof location === 'string')
       assert.ok(location.includes('supabase.co/storage/v1/object/public/track-audio/global/test-audio-uuid.mp3'))
+    })
+  })
+
+  describe('10. Vercel Dynamic Route Dispatchers ([route].ts)', () => {
+    it('audioDispatcher resolves stream from rewritten query route param', async () => {
+      const req = createMockReq({
+        method: 'GET',
+        url: '/api/audio/[route]?route=stream&path=global/test-audio-uuid.mp3',
+      })
+      const res = createMockRes()
+
+      await audioDispatcher(req, res.res)
+
+      assert.equal(res.getStatusCode(), 307)
+      const location = res.getHeaders()['Location']
+      assert.ok(typeof location === 'string')
+      assert.ok(location.includes('supabase.co/storage/v1/object/public/track-audio/global/test-audio-uuid.mp3'))
+    })
+
+    it('audioDispatcher falls back to pathname in local environment', async () => {
+      const req = createMockReq({
+        method: 'GET',
+        url: '/api/audio/stream?path=global/test-audio-uuid.mp3',
+      })
+      const res = createMockRes()
+
+      await audioDispatcher(req, res.res)
+
+      assert.equal(res.getStatusCode(), 307)
+    })
+
+    it('spotifyDispatcher resolves health from rewritten query route param', async () => {
+      const req = createMockReq({
+        method: 'GET',
+        url: '/api/spotify/[route]?route=health',
+      })
+      const res = createMockRes()
+
+      await spotifyDispatcher(req, res.res)
+
+      assert.equal(res.getStatusCode(), 200)
+      const data = res.getJson<{ ok: boolean }>()
+      assert.equal(data.ok, true)
+    })
+
+    it('invitationsDispatcher resolves preview from rewritten query route param', async () => {
+      const req = createMockReq({
+        method: 'GET',
+        url: '/api/invitations/[route]?route=preview&token=invalid-short',
+      })
+      const res = createMockRes()
+
+      await invitationsDispatcher(req, res.res)
+
+      assert.equal(res.getStatusCode(), 200)
+      const data = res.getJson<{ found: boolean }>()
+      assert.equal(data.found, false)
+    })
+
+    it('playlistsDispatcher resolves tracks from rewritten query route param', async () => {
+      const req = createMockReq({
+        method: 'GET',
+        url: '/api/playlists/[route]?route=tracks&playlistId=nonexistent',
+      })
+      const res = createMockRes()
+
+      await playlistsDispatcher(req, res.res)
+
+      assert.equal(res.getStatusCode(), 200)
+      const data = res.getJson<{ tracks: unknown[] }>()
+      assert.deepEqual(data.tracks, [])
+    })
+
+    it('returns 404 for unknown dynamic action in dispatcher', async () => {
+      const req = createMockReq({
+        method: 'GET',
+        url: '/api/audio/[route]?route=unknown-action',
+      })
+      const res = createMockRes()
+
+      await audioDispatcher(req, res.res)
+
+      assert.equal(res.getStatusCode(), 404)
     })
   })
 })

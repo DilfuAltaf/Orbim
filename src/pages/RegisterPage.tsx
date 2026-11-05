@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { TextField } from '@/components/ui/TextField'
 import { useAuth } from '@/features/auth/auth-context'
 import { useToast } from '@/features/feedback/toast-context'
+import { validateIdentifier, validateNewPassword } from '@/lib/auth-credentials'
 import { buttonVariants } from '@/lib/styles'
 
 export function RegisterPage() {
@@ -30,13 +31,15 @@ export function RegisterPage() {
       return
     }
 
-    if (!email.trim() || !password) {
-      setFormError('Please provide your email address and a password.')
+    const identifierError = validateIdentifier(email)
+    if (identifierError) {
+      setFormError(identifierError)
       return
     }
 
-    if (password.length < 6) {
-      setFormError('Password must be at least 6 characters.')
+    const passwordError = validateNewPassword(password)
+    if (passwordError) {
+      setFormError(passwordError)
       return
     }
 
@@ -97,7 +100,7 @@ export function RegisterPage() {
         />
         <TextField
           id="register-email"
-          label="Email"
+          label="Email or identifier"
           type="email"
           autoComplete="email"
           placeholder="you@example.com"

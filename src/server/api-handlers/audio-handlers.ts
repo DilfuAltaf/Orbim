@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
 
+import { isUserAdmin } from '../../features/auth/admin.ts'
 import {
   loadServerAudioRegistry,
   saveServerAudioRecord,
@@ -201,7 +202,7 @@ export async function audioUploadHandler(
     const token = extractBearerToken(req)
     if (token) {
       const user = await verifySupabaseToken(token)
-      if (user && user.email !== 'dilfualtaf07@gmail.com') {
+      if (user && !isUserAdmin(user.email)) {
         // Only admin can upload audio
         sendError(res, 403, 'Hanya akun administrator yang diizinkan mengunggah audio.')
         return

@@ -777,4 +777,150 @@ describe('Spotify & Multi-Provider HTML5 Audio Routing Regressions', () => {
     assert.equal(selection, 'html5-audio')
     assert.notEqual(selection, 'spotify-sdk')
   })
+
+  describe('Phase 5 — Audio Playback Race Conditions & State Recovery', () => {
+    it('prevents duplicate play requests while play promise is in flight', async () => {
+      let playCallCount = 0
+      let resolvePlay!: () => void
+
+      const fakeAudio = new FakeHtmlAudioElement()
+      fakeAudio.play = () => {
+        playCallCount++
+        return new Promise<void>((resolve) => {
+          resolvePlay = () => {
+            fakeAudio.paused = false
+            resolve()
+          }
+        })
+      }
+
+      const engine = new Html5AudioEngine({
+        audio: fakeAudio as unknown as HTMLAudioElement,
+        events: {
+          onTime: () => {},
+          onWaiting: () => {},
+          onPlaying: () => {},
+          onPause: () => {},
+          onEnded: () => {},
+          onError: () => {},
+        },
+      })
+
+      const track = makeTrack({ playbackUrl: 'https://example.com/audio.mp3' })
+      engine.load(track)
+
+      // First play call starts in-flight promise
+      const p1 = engine.play()
+      assert.equal(playCallCount, 1)
+
+      // While in flight, engine.isPaused() must return false to prevent effect from issuing duplicate play
+      assert.equal(engine.isPaused(), false, 'Engine must not report paused while play is in-flight')
+
+      // Second play call returns the same in-flight promise without calling audio.play() again
+      const p2 = engine.play()
+      assert.equal(playCallCount, 1, 'Duplicate play() call must be coalesced')
+      assert.equal(p1, p2)
+
+      // Complete in-flight playback
+      resolvePlay()
+      await p1
+
+      assert.equal(engine.isPaused(), false)
+      assert.equal(playCallCount, 1)
+    })
+
+    it('reloads source when query parameters differ', () => {
+      const fakeAudio = new FakeHtmlAudioElement()
+      const engine = new Html5AudioEngine({
+        audio: fakeAudio as unknown as HTMLAudioElement,
+        events: {
+          onTime: () => {},
+          onWaiting: () => {},
+          onPlaying: () => {},
+          onPause: () => {},
+          onEnded: () => {},
+          onError: () => {},
+        },
+      })
+
+      const track1 = makeTrack({ playbackUrl: 'https://example.com/stream?token=abc' })
+      engine.load(track1)
+      assert.equal(engine.currentSource(), 'https://example.com/stream?token=abc')
+
+      const track2 = makeTrack({ playbackUrl: 'https://example.com/stream?token=xyz' })
+      engine.load(track2)
+      assert.equal(engine.currentSource(), 'https://example.com/stream?token=xyz')
+    })
+
+    it('ignores internal pause events during source switching', () => {
+      let pauseEmitted = false
+      const fakeAudio = new FakeHtmlAudioElement()
+      const engine = new Html5AudioEngine({
+        audio: fakeAudio as unknown as HTMLAudioElement,
+        events: {
+          onTime: () => {},
+          onWaiting: () => {},
+          onPlaying: () => {},
+          onPause: () => {
+            pauseEmitted = true
+          },
+          onEnded: () => {},
+          onError: () => {},
+        },
+      })
+
+      engine.load(makeTrack({ playbackUrl: 'https://example.com/test.mp3' }))
+
+      // Simulating browser's internal pause event during media source reset
+      fakeAudio.emit('pause')
+      assert.equal(pauseEmitted, false, 'Internal pause event must not leak before source is played')
+    })
+
+    it('media error resets loadingAudio and isPlaying state and preserves error message in reducer', () => {
+      let state = {
+        ...initialState,
+        isPlaying: true,
+        isLoadingAudio: true,
+      }
+
+      // Simulate media error callback in PlayerProvider
+      const errorDetail = 'Code 4: MEDIA_ELEMENT_ERROR'
+      state = playerReducer(state, {
+        type: 'setError',
+        error: `Audio preview unavailable for this track (${errorDetail}).`,
+      })
+      state = playerReducer(state, { type: 'setPlaying', isPlaying: false })
+      state = playerReducer(state, { type: 'setLoadingAudio', isLoading: false })
+
+      assert.equal(state.isPlaying, false)
+      assert.equal(state.isLoadingAudio, false)
+      assert.ok(state.playbackError?.includes('Code 4'))
+    })
+
+    it('rejected play promise resets in-flight state and allows subsequent play attempt', async () => {
+      const fakeAudio = new FakeHtmlAudioElement()
+      fakeAudio.play = () => Promise.reject(new Error('NotAllowedError: user gesture required'))
+
+      const engine = new Html5AudioEngine({
+        audio: fakeAudio as unknown as HTMLAudioElement,
+        events: {
+          onTime: () => {},
+          onWaiting: () => {},
+          onPlaying: () => {},
+          onPause: () => {},
+          onEnded: () => {},
+          onError: () => {},
+        },
+      })
+
+      engine.load(makeTrack({ playbackUrl: 'https://example.com/test.mp3' }))
+
+      await assert.rejects(async () => {
+        await engine.play()
+      }, /NotAllowedError/)
+
+      // After rejection, isPaused() should return true again so user can click play again
+      assert.equal(engine.isPaused(), true)
+    })
+  })
 })

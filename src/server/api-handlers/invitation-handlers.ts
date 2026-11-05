@@ -47,7 +47,7 @@ export async function invitationIndexHandler(
         }
       }
 
-      const result = createServerInvitation({
+      const result = await createServerInvitation({
         playlistId: parsed.playlistId || '',
         createdBy: effectiveCreator,
         inviteeId: parsed.inviteeId || null,
@@ -57,6 +57,7 @@ export async function invitationIndexHandler(
         role: parsed.role,
         expiresAt: parsed.expiresAt,
         playlistTitle: parsed.playlistTitle,
+        bearerToken: token,
       })
 
       const statusCode = result.success
@@ -89,17 +90,17 @@ export async function invitationIndexHandler(
   const queryUserId = verifiedUserId || parsedUrl.searchParams.get('userId') || undefined
 
   if (playlistId) {
-    const result = listServerInvitationsForPlaylist(playlistId, queryUserId)
+    const result = await listServerInvitationsForPlaylist(playlistId, queryUserId, token)
     const statusCode = result.error ? 403 : 200
     sendJson(res, statusCode, { success: !result.error, ...result })
     return
   }
 
-  const invitations = listServerInvitationsForUser({
+  const invitations = await listServerInvitationsForUser({
     userId: queryUserId,
     email: parsedUrl.searchParams.get('email') || undefined,
     displayName: parsedUrl.searchParams.get('displayName') || undefined,
-  })
+  }, token)
 
   sendJson(res, 200, { success: true, invitations })
 }
@@ -122,7 +123,7 @@ export async function invitationPreviewHandler(
   }
 
   const queryUserId = verifiedUserId || parsedUrl.searchParams.get('userId') || undefined
-  const result = getServerInvitationPreview(tokenParam, queryUserId)
+  const result = await getServerInvitationPreview(tokenParam, queryUserId, authToken)
 
   sendJson(res, 200, { success: result.found, ...result })
 }
@@ -158,10 +159,11 @@ export async function invitationAcceptHandler(
       }
     }
 
-    const result = acceptServerInvitation({
+    const result = await acceptServerInvitation({
       token: parsed.token,
       userId: effectiveUserId,
       displayName: parsed.displayName,
+      bearerToken: authToken,
     })
 
     const statusCode = result.success
@@ -213,11 +215,12 @@ export async function invitationRespondHandler(
       }
     }
 
-    const result = respondToServerInvitation({
+    const result = await respondToServerInvitation({
       invitationId: parsed.invitationId,
       userId: effectiveUserId,
       displayName: parsed.displayName,
       action: parsed.action,
+      bearerToken: authToken,
     })
 
     const statusCode = result.success

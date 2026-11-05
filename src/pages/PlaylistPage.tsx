@@ -9,6 +9,7 @@ import { SharePlaylistDialog } from '@/components/playlist/SharePlaylistDialog'
 import { EditPlaylistDialog } from '@/components/playlist/EditPlaylistDialog'
 import { DeletePlaylistDialog } from '@/components/playlist/DeletePlaylistDialog'
 import { KickCollaboratorDialog } from '@/components/playlist/KickCollaboratorDialog'
+import { RemoveTrackDialog } from '@/components/playlist/RemoveTrackDialog'
 import { AddToPlaylistDialog } from '@/components/playlist/AddToPlaylistDialog'
 import { SpotifyTrackUploadDialog } from '@/components/music/SpotifyTrackUploadDialog'
 import { AttachAudioDialog } from '@/components/music/AttachAudioDialog'
@@ -63,6 +64,7 @@ export function PlaylistPage() {
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [isDeleteOpen, setIsDeleteOpen] = useState(false)
   const [collaboratorToKick, setCollaboratorToKick] = useState<Collaborator | null>(null)
+  const [trackToRemove, setTrackToRemove] = useState<MusicTrack | null>(null)
   const [sortMode, setSortMode] = useState<PlaylistSortMode>('original')
   const [attachAudioTrack, setAttachAudioTrack] = useState<MusicTrack | null>(null)
   const [trackToAddToPlaylist, setTrackToAddToPlaylist] = useState<MusicTrack | null>(null)
@@ -544,19 +546,49 @@ export function PlaylistPage() {
   }
 
   const isOwned = user ? playlist.owner.id === user.id || isAdmin : isOwnedByViewer(playlist)
+  const userMember = user
+    ? playlist.collaborators.find(
+        (c) => c.id === user.id || (c as unknown as { userId?: string }).userId === user.id,
+      )
+    : null
+  const isEditor = userMember?.role === 'editor'
+
+  const canManageTracks = (track?: MusicTrack, entry?: PlaylistTrackEntry): boolean => {
+    if (isDemo) return true
+    if (isOwned || isAdmin) return true
+    if (!user || !isEditor) return false
+    if (!track && !entry) {
+      return playlist.trackEntries.some(
+        (e) => e.addedBy.id === user.id || e.track.addedBy === user.id,
+      )
+    }
+    const addedById = entry?.addedBy?.id || track?.addedBy
+    return Boolean(addedById && addedById === user.id)
+  }
+
   const tracks = playlistTracks(playlist)
 
-  async function handleRemoveTrack(track: MusicTrack) {
+  async function handleConfirmRemoveTrack(track: MusicTrack) {
     if (!playlist) return
+
+    if (!canManageTracks(track)) {
+      notify({
+        tone: 'info',
+        title: 'Could not remove track',
+        description: 'You are only authorized to remove tracks you added.',
+      })
+      return
+    }
+
+    const removePredicate = (e: PlaylistTrackEntry) =>
+      e.track.providerTrackId !== track.providerTrackId && e.track.id !== track.id
 
     if (isDemo) {
       setRemotePlaylist((prev) => {
         if (!prev) return prev
         return {
           ...prev,
-          trackEntries: prev.trackEntries.filter(
-            (e) => e.track.providerTrackId !== track.providerTrackId,
-          ),
+          trackEntries: prev.trackEntries.filter(removePredicate),
         }
       })
       notify({
@@ -569,6 +601,7 @@ export function PlaylistPage() {
 
     const { error } = await removeTrackFromPlaylist({
       playlistId: playlist.id,
+      trackId: track.id,
       providerTrackId: track.providerTrackId,
     })
 
@@ -581,11 +614,26 @@ export function PlaylistPage() {
       return
     }
 
+    setRemotePlaylist((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        trackEntries: prev.trackEntries.filter(removePredicate),
+      }
+    })
+
     notify({
       tone: 'success',
       title: 'Track removed',
       description: `“${track.title}” removed from playlist.`,
     })
+
+    window.dispatchEvent(
+      new CustomEvent('orbim:playlist-updated', {
+        detail: { playlistId: playlist.id, action: 'track-removed' },
+      }),
+    )
+
     void loadRemote()
   }
 
@@ -624,7 +672,8 @@ export function PlaylistPage() {
             onSortChange={setSortMode}
             onAdd={(track) => setTrackToAddToPlaylist(track)}
             onAddTrack={isAdmin ? () => setIsAddTrackOpen(true) : undefined}
-            onRemoveTrack={isOwned ? handleRemoveTrack : undefined}
+            onRemoveTrack={(track) => setTrackToRemove(track)}
+            canRemoveTrack={(track, entry) => canManageTracks(track, entry)}
             onAttachAudio={
               isAdmin
                 ? (track) => {
@@ -809,6 +858,14 @@ export function PlaylistPage() {
           })
           void loadRemote()
         }}
+      />
+
+      <RemoveTrackDialog
+        playlist={playlist}
+        track={trackToRemove}
+        open={Boolean(trackToRemove)}
+        onClose={() => setTrackToRemove(null)}
+        onConfirm={handleConfirmRemoveTrack}
       />
     </div>
   )

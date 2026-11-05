@@ -54,9 +54,9 @@ function isSameAudioSource(current: string | null, next: string | null): boolean
   if (current === next) return true
   try {
     const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost'
-    const currentPath = new URL(current, origin).pathname
-    const nextPath = new URL(next, origin).pathname
-    return currentPath === nextPath
+    const currentUrl = new URL(current, origin)
+    const nextUrl = new URL(next, origin)
+    return currentUrl.pathname === nextUrl.pathname && currentUrl.search === nextUrl.search
   } catch {
     return false
   }
@@ -179,6 +179,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             type: 'setError',
             error: `Spotify playback unavailable (${detail}).`,
           })
+          dispatch({ type: 'setPlaying', isPlaying: false })
+          dispatch({ type: 'setLoadingAudio', isLoading: false })
         },
       },
       onStatus: setSpotifyEngineStatus,
@@ -234,6 +236,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             type: 'setError',
             error: `Audio preview unavailable for this track (${detail}).`,
           })
+          dispatch({ type: 'setPlaying', isPlaying: false })
+          dispatch({ type: 'setLoadingAudio', isLoading: false })
         },
       },
     })
@@ -284,6 +288,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               error: `Unable to play audio preview (${message}).`,
             })
             dispatch({ type: 'setPlaying', isPlaying: false })
+            dispatch({ type: 'setLoadingAudio', isLoading: false })
           })
         }
       } else if (state.isPlaying && html5Engine.isPaused()) {
@@ -298,6 +303,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             error: `Unable to resume audio preview (${message}).`,
           })
           dispatch({ type: 'setPlaying', isPlaying: false })
+          dispatch({ type: 'setLoadingAudio', isLoading: false })
         })
       } else if (!state.isPlaying && !html5Engine.isPaused()) {
         html5Engine.pause()
@@ -350,6 +356,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             type: 'setError',
             error: `Spotify playback failed to start (${message}).`,
           })
+          dispatch({ type: 'setPlaying', isPlaying: false })
+          dispatch({ type: 'setLoadingAudio', isLoading: false })
         })
       }
     } else if (state.isPlaying && spotifyEngine.isPaused()) {
@@ -359,6 +367,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           type: 'setError',
           error: `Spotify playback failed to resume (${message}).`,
         })
+        dispatch({ type: 'setPlaying', isPlaying: false })
+        dispatch({ type: 'setLoadingAudio', isLoading: false })
       })
     } else if (!state.isPlaying && !spotifyEngine.isPaused()) {
       spotifyEngine.pause()
@@ -402,6 +412,34 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       ? buildShuffleQueue({ queue: playable, currentTrack: playable[startIndex] })
       : { queue: playable, currentIndex: startIndex }
 
+    const targetTrack = ordered.queue[Math.max(ordered.currentIndex, 0)]
+    if (targetTrack) {
+      const targetEffective = resolveEffectiveTrack(targetTrack) || targetTrack
+      if (selectTrackPlayback(targetEffective) === 'html5-audio') {
+        const html5Engine = engineRef.current
+        if (html5Engine) {
+          try {
+            html5Engine.load(targetEffective)
+            html5Engine.play().catch((err: unknown) => {
+              const isAbort =
+                (err instanceof DOMException && err.name === 'AbortError') ||
+                (err instanceof Error && err.name === 'AbortError')
+              if (isAbort) return
+              const message = err instanceof Error ? err.message : 'Playback failed'
+              dispatch({
+                type: 'setError',
+                error: `Unable to play audio (${message}).`,
+              })
+              dispatch({ type: 'setPlaying', isPlaying: false })
+              dispatch({ type: 'setLoadingAudio', isLoading: false })
+            })
+          } catch {
+            // Handled via state error
+          }
+        }
+      }
+    }
+
     dispatch({
       type: 'play',
       queue: ordered.queue,
@@ -433,6 +471,32 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         ? buildShuffleQueue({ queue: playable, currentTrack: playable[startIndex] })
         : { queue: playable, currentIndex: startIndex }
 
+      const targetTrack = ordered.queue[Math.max(ordered.currentIndex, 0)] || effectiveTrack
+      const targetEffective = resolveEffectiveTrack(targetTrack) || targetTrack
+      if (selectTrackPlayback(targetEffective) === 'html5-audio') {
+        const html5Engine = engineRef.current
+        if (html5Engine) {
+          try {
+            html5Engine.load(targetEffective)
+            html5Engine.play().catch((err: unknown) => {
+              const isAbort =
+                (err instanceof DOMException && err.name === 'AbortError') ||
+                (err instanceof Error && err.name === 'AbortError')
+              if (isAbort) return
+              const message = err instanceof Error ? err.message : 'Playback failed'
+              dispatch({
+                type: 'setError',
+                error: `Unable to play audio (${message}).`,
+              })
+              dispatch({ type: 'setPlaying', isPlaying: false })
+              dispatch({ type: 'setLoadingAudio', isLoading: false })
+            })
+          } catch {
+            // Handled via state error
+          }
+        }
+      }
+
       dispatch({
         type: 'play',
         queue: ordered.queue,
@@ -455,11 +519,44 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const selection = selectTrackPlayback(track)
 
     if (selection === 'html5-audio') {
-      const nextPlaying = !isPlayingRef.current
-      if (nextPlaying) {
+      const html5Engine = engineRef.current
+      if (!html5Engine) return
+
+      if (isPlayingRef.current) {
+        html5Engine.pause()
+        dispatch({ type: 'setPlaying', isPlaying: false })
+      } else {
         dispatch({ type: 'setError', error: null })
+        dispatch({ type: 'setLoadingAudio', isLoading: true })
+
+        if (!html5Engine.hasSource()) {
+          try {
+            html5Engine.load(track)
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'No audio source'
+            dispatch({
+              type: 'setError',
+              error: `Unable to play audio (${message}).`,
+            })
+            dispatch({ type: 'setLoadingAudio', isLoading: false })
+            return
+          }
+        }
+
+        html5Engine.play().catch((err: unknown) => {
+          const isAbort =
+            (err instanceof DOMException && err.name === 'AbortError') ||
+            (err instanceof Error && err.name === 'AbortError')
+          if (isAbort) return
+          const message = err instanceof Error ? err.message : 'Playback failed'
+          dispatch({
+            type: 'setError',
+            error: `Unable to play audio (${message}).`,
+          })
+          dispatch({ type: 'setPlaying', isPlaying: false })
+          dispatch({ type: 'setLoadingAudio', isLoading: false })
+        })
       }
-      dispatch({ type: 'setPlaying', isPlaying: nextPlaying })
       return
     }
 
@@ -467,9 +564,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       const engine = getSpotifyEngine()
       if (engine.hasSource()) {
         if (engine.isPaused()) {
-          dispatch({ type: 'setPlaying', isPlaying: true })
+          dispatch({ type: 'setLoadingAudio', isLoading: true })
           engine.play().catch((err: unknown) => {
             dispatch({ type: 'setPlaying', isPlaying: false })
+            dispatch({ type: 'setLoadingAudio', isLoading: false })
             const message = err instanceof Error ? err.message : 'Playback failed'
             dispatch({
               type: 'setError',

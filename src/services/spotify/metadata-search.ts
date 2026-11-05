@@ -29,7 +29,8 @@ export async function checkSpotifyServerHealth(options?: {
   const fetchFn = options?.fetchFn || globalThis.fetch
   try {
     const res = await fetchFn('/api/spotify/health')
-    if (res.ok) {
+    const contentType = res.headers.get('content-type') || ''
+    if (res.ok && contentType.includes('application/json')) {
       const data = (await res.json()) as { ok?: boolean; configured?: boolean }
       return { ok: Boolean(data.ok), configured: Boolean(data.configured) }
     }
@@ -68,7 +69,8 @@ export async function searchSpotifyMetadata(
       },
     })
 
-    if (res.ok) {
+    const contentType = res.headers.get('content-type') || ''
+    if (res.ok && contentType.includes('application/json')) {
       const data = (await res.json()) as {
         tracks?: Array<{
           id: string
@@ -103,9 +105,13 @@ export async function searchSpotifyMetadata(
         lyricsStatus: 'not_available' as const,
       }))
     }
-  } catch {
+  } catch (err) {
     if (options?.signal?.aborted) {
       throw new DOMException('Search aborted', 'AbortError')
+    }
+    // Propagate rate limits directly if detected
+    if (err instanceof Error && err.message.toLowerCase().includes('rate limit')) {
+      throw err
     }
     // Fall back to direct PKCE if available
   }

@@ -12,7 +12,7 @@ import {
   type LocalPlaylistRecord,
   type LocalPlaylistTrackRecord,
 } from '../auth/local-auth-store.ts'
-import { findGlobalAudioForTrack } from '../audio/global-audio-registry.ts'
+import { findGlobalAudioForTrack, normalizeTrackId } from '../audio/global-audio-registry.ts'
 
 export type SupabasePlaylistRow = Database['public']['Tables']['playlists']['Row']
 export type SupabaseTrackRow = Database['public']['Tables']['playlist_tracks']['Row']
@@ -1390,28 +1390,107 @@ export async function deleteSupabasePlaylist(
  */
 export async function removeTrackFromPlaylist(params: {
   playlistId: string
-  providerTrackId: string
+  trackId?: string
+  providerTrackId?: string
 }): Promise<{ error: Error | null }> {
-  // Check if target is a local playlist
-  const localTracks = getLocalPlaylistTracks(params.playlistId)
-  const trackToRemove = localTracks.find((t) => t.provider_track_id === params.providerTrackId)
+  const { playlistId } = params
+  const targetId = (params.trackId || params.providerTrackId || '').trim()
+  if (!playlistId || !targetId) {
+    return { error: new Error('Missing playlistId or trackId.') }
+  }
+
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const isTargetUuid = UUID_REGEX.test(targetId)
+
+  // 1. Check if target is a local playlist
+  const localTracks = getLocalPlaylistTracks(playlistId)
+  const trackToRemove = localTracks.find((t) => {
+    if (params.trackId && UUID_REGEX.test(params.trackId)) {
+      return t.id === params.trackId
+    }
+    const providerId = params.providerTrackId || (!isTargetUuid ? targetId : undefined)
+    if (providerId) {
+      return t.provider_track_id === providerId
+    }
+    return t.id === targetId
+  })
+
   if (trackToRemove) {
     removeLocalPlaylistTrack(trackToRemove.id)
+    try {
+      void fetch(
+        `/api/playlists/tracks?playlistId=${encodeURIComponent(playlistId)}&trackId=${encodeURIComponent(trackToRemove.id)}`,
+        { method: 'DELETE' },
+      ).catch(() => null)
+    } catch {
+      // Non-blocking
+    }
     return { error: null }
   }
 
-  const { data: authData } = await supabase.auth.getUser()
-  if (!authData.user) {
+  // 2. Sync with server API
+  try {
+    const authHeaders = await getSupabaseAuthHeaders()
+    void fetch(
+      `/api/playlists/tracks?playlistId=${encodeURIComponent(playlistId)}&trackId=${encodeURIComponent(targetId)}`,
+      {
+        method: 'DELETE',
+        headers: { ...authHeaders },
+      },
+    ).catch(() => null)
+  } catch {
+    // Non-blocking
+  }
+
+  // 3. Supabase deletion with auth check
+  const activeLocal = getActiveLocalUser()
+  let authUserId: string | null = null
+  try {
+    const { data: authData } = await supabase.auth.getUser()
+    authUserId = authData?.user?.id ?? null
+  } catch {
+    // non-blocking
+  }
+
+  if (!authUserId && !activeLocal) {
     return { error: new Error('Authentication required to remove tracks.') }
   }
 
-  const { error } = await supabase
-    .from('playlist_tracks')
-    .delete()
-    .eq('playlist_id', params.playlistId)
-    .eq('provider_track_id', params.providerTrackId)
+  if (isSupabaseConfigured() && authUserId) {
+    if (params.trackId && UUID_REGEX.test(params.trackId)) {
+      // Database track UUID: target database 'id' column directly
+      const { error } = await supabase
+        .from('playlist_tracks')
+        .delete()
+        .eq('playlist_id', playlistId)
+        .eq('id', params.trackId)
 
-  return { error }
+      if (error) {
+        return { error: new Error(error.message) }
+      }
+    } else {
+      // Provider track ID: target 'provider_track_id' column
+      const providerId = params.providerTrackId || (!isTargetUuid ? targetId : '')
+      if (providerId) {
+        const normId = normalizeTrackId(providerId)
+        const candidateIds = Array.from(
+          new Set([providerId, normId, `spotify:track:${normId}`]),
+        ).filter(Boolean) as string[]
+
+        const { error } = await supabase
+          .from('playlist_tracks')
+          .delete()
+          .eq('playlist_id', playlistId)
+          .in('provider_track_id', candidateIds)
+
+        if (error) {
+          return { error: new Error(error.message) }
+        }
+      }
+    }
+  }
+
+  return { error: null }
 }
 
 /**

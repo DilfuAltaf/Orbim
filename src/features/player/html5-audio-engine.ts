@@ -2,13 +2,29 @@ import type { MusicTrack } from '../../types/music.ts'
 import { resolveStoragePublicUrl } from '../../services/audio/audio-storage.ts'
 import type { PlaybackEngine, PlaybackEngineEvents } from './playback-engine.ts'
 
+function redactUrl(url: string | null | undefined): string {
+  if (!url) return 'none'
+  try {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost'
+    const parsed = new URL(url, origin)
+    const sensitive = ['token', 'signature', 'sig', 'key', 'apikey', 'api_key', 'secret', 'auth', 'access_token']
+    for (const key of Array.from(parsed.searchParams.keys())) {
+      if (sensitive.some((s) => key.toLowerCase().includes(s))) {
+        parsed.searchParams.set(key, '[REDACTED]')
+      }
+    }
+    return parsed.toString()
+  } catch {
+    return '[INVALID_URL]'
+  }
+}
+
 /**
  * HTML5 `<audio>` playback engine.
  *
- * Behavior is extracted verbatim from PlayerProvider's previous inline audio
- * handling: source swap + rewind, event mapping, error detail formatting,
- * cleanup on dispose. It knows nothing about ORBIM's queue, player state or
- * demo mode — PlayerProvider keeps owning all of that.
+ * Behavior is extracted from PlayerProvider: source swap + rewind, event mapping,
+ * error detail formatting, cleanup on dispose. It knows nothing about ORBIM's queue,
+ * player state or demo mode — PlayerProvider keeps owning all of that.
  *
  * Sourcing safety: `load` accepts only a track carrying a concrete audio URL.
  * `selectTrackPlayback` (called by PlayerProvider before any load) is the gate
@@ -24,6 +40,8 @@ export class Html5AudioEngine implements PlaybackEngine {
   private listeners: Array<[string, EventListenerOrEventListenerObject]> = []
   private disposed = false
   private isSwitchingSource = false
+  private hasPlayedCurrentSource = false
+  private currentTrackId: string | null = null
   private loadedUrl: string | null = null
   private playPromise: Promise<void> | null = null
 
@@ -37,39 +55,72 @@ export class Html5AudioEngine implements PlaybackEngine {
       this.listeners.push([type, handler])
     }
 
+    attach('loadstart', () => {
+      this.logDiagnostic('loadstart')
+    })
+    attach('loadedmetadata', () => {
+      this.logDiagnostic('loadedmetadata')
+    })
+    attach('loadeddata', () => {
+      this.logDiagnostic('loadeddata')
+    })
+    attach('canplay', () => {
+      this.logDiagnostic('canplay')
+    })
     attach('timeupdate', () => {
       if (!this.audio.paused && !Number.isNaN(this.audio.currentTime)) {
         this.events.onTime(Math.floor(this.audio.currentTime))
       }
     })
     attach('waiting', () => {
+      this.logDiagnostic('waiting')
       this.events.onWaiting()
+    })
+    attach('play', () => {
+      this.logDiagnostic('play')
     })
     attach('playing', () => {
       this.isSwitchingSource = false
+      this.hasPlayedCurrentSource = true
+      this.logDiagnostic('playing')
       this.events.onPlaying()
     })
-    attach('canplay', () => {
-      this.isSwitchingSource = false
-    })
-    attach('loadeddata', () => {
-      this.isSwitchingSource = false
-    })
     attach('pause', () => {
-      if (this.isSwitchingSource || this.playPromise !== null) {
+      this.logDiagnostic('pause')
+      if (this.isSwitchingSource || this.playPromise !== null || !this.hasPlayedCurrentSource) {
         return
       }
       this.events.onPause()
     })
     attach('ended', () => {
+      this.logDiagnostic('ended')
       this.events.onEnded()
     })
     attach('error', () => {
       this.isSwitchingSource = false
+      this.logDiagnostic('error')
       this.audioErrorOccurred()
     })
 
     this.audio.volume = 1
+  }
+
+  private logDiagnostic(event: string, extra?: Record<string, unknown>): void {
+    if (typeof console === 'undefined' || !console.debug) return
+    const err = this.audio.error
+    console.debug(`[Html5AudioEngine:${event}]`, {
+      timestamp: new Date().toISOString(),
+      trackId: this.currentTrackId ?? 'none',
+      loadedUrl: redactUrl(this.loadedUrl),
+      currentSrc: redactUrl(this.audio.currentSrc || this.audio.src),
+      paused: this.audio.paused,
+      readyState: this.audio.readyState ?? 0,
+      networkState: this.audio.networkState ?? 0,
+      duration: this.audio.duration,
+      currentTime: this.audio.currentTime,
+      error: err ? { code: err.code, message: err.message } : null,
+      ...extra,
+    })
   }
 
   private locationHref(): string | null {
@@ -101,7 +152,7 @@ export class Html5AudioEngine implements PlaybackEngine {
   }
 
   isPaused(): boolean {
-    return this.audio.paused
+    return this.audio.paused && this.playPromise === null
   }
 
   isEnded(): boolean {
@@ -125,18 +176,22 @@ export class Html5AudioEngine implements PlaybackEngine {
       throw new Error('Refusing to load a track without a concrete audio URL.')
     }
 
+    this.currentTrackId = track.id || track.providerTrackId
     this.loadedUrl = sourceUrl
     this.isSwitchingSource = true
+    this.hasPlayedCurrentSource = false
     this.playPromise = null
     this.audio.src = sourceUrl
     this.audio.currentTime = 0
-    setTimeout(() => {
-      this.isSwitchingSource = false
-    }, 300)
+    this.logDiagnostic('load')
   }
 
   clear(): void {
+    this.logDiagnostic('clear')
     this.loadedUrl = null
+    this.currentTrackId = null
+    this.hasPlayedCurrentSource = false
+    this.isSwitchingSource = false
     this.playPromise = null
     if (!this.hasSource()) return
 
@@ -147,8 +202,6 @@ export class Html5AudioEngine implements PlaybackEngine {
 
   play(): Promise<void> {
     if (!this.hasSource()) {
-      // Mirrors native media element behavior: play() without a usable source
-      // rejects instead of crashing the caller.
       return Promise.reject(new Error('Html5AudioEngine: no audio source loaded.'))
     }
 
@@ -160,6 +213,7 @@ export class Html5AudioEngine implements PlaybackEngine {
       return this.playPromise
     }
 
+    this.logDiagnostic('play_call')
     const promise = this.audio.play()
     if (!promise || typeof promise.then !== 'function') {
       this.playPromise = null
@@ -168,15 +222,19 @@ export class Html5AudioEngine implements PlaybackEngine {
 
     this.playPromise = promise
       .then(() => {
+        this.logDiagnostic('play_resolved')
         this.playPromise = null
       })
       .catch((err: unknown) => {
+        this.logDiagnostic('play_rejected', {
+          error: err instanceof Error ? err.message : String(err),
+          name: err instanceof Error ? err.name : undefined,
+        })
         this.playPromise = null
         if (
           (err instanceof DOMException && err.name === 'AbortError') ||
           (err instanceof Error && err.name === 'AbortError')
         ) {
-          // Playback request was interrupted by a new play/pause; safe to ignore.
           return
         }
         throw err
@@ -186,6 +244,8 @@ export class Html5AudioEngine implements PlaybackEngine {
   }
 
   pause(): void {
+    this.logDiagnostic('pause_call')
+    this.isSwitchingSource = false
     if (this.playPromise) {
       this.playPromise
         .then(() => {
@@ -217,6 +277,9 @@ export class Html5AudioEngine implements PlaybackEngine {
     if (this.disposed) return
     this.disposed = true
     this.loadedUrl = null
+    this.currentTrackId = null
+    this.hasPlayedCurrentSource = false
+    this.isSwitchingSource = false
     this.playPromise = null
 
     for (const [type, handler] of this.listeners) {

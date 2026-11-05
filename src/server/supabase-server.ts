@@ -13,7 +13,7 @@ import { createClient, type SupabaseClient, type AuthUser as User } from '@supab
 import fs from 'node:fs'
 import path from 'node:path'
 
-export type { User }
+export type { SupabaseClient, User }
 
 export interface SupabaseServerConfig {
   supabaseUrl: string | null
@@ -117,6 +117,14 @@ export function extractBearerToken(req: IncomingMessage): string | null {
   return match ? match[1].trim() : null
 }
 
+let customTokenVerifierForTesting: ((token: string) => Promise<User | null> | User | null) | null = null
+
+export function _setTokenVerifierForTesting(
+  verifier: ((token: string) => Promise<User | null> | User | null) | null,
+): void {
+  customTokenVerifierForTesting = verifier
+}
+
 /**
  * Cryptographically verifies a Supabase access token server-side.
  * Returns the verified Supabase User if valid, or null if invalid or expired.
@@ -126,6 +134,46 @@ export async function verifySupabaseToken(
   envOverride?: Record<string, string | undefined>,
 ): Promise<User | null> {
   if (!token) return null
+  if (customTokenVerifierForTesting) {
+    return customTokenVerifierForTesting(token)
+  }
+
+  // Preserve existing supported authentication behavior for local development,
+  // but strictly disallow local mock tokens in production write operations.
+  const isProd = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production'
+  if (!isProd && token.startsWith('orbim-local-access-token-')) {
+    const userId = token.replace('orbim-local-access-token-', '').trim()
+    if (userId) {
+      try {
+        const { loadServerUsers } = await import('./user-invitation-service.ts')
+        const matched = loadServerUsers().find((u) => u.id === userId)
+        return {
+          id: userId,
+          email: matched?.email || `${userId}@local.orbim`,
+          aud: 'authenticated',
+          role: 'authenticated',
+          app_metadata: { provider: 'local' },
+          user_metadata: {
+            display_name: matched?.displayName || userId,
+          },
+          created_at: matched?.createdAt || new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        } as User
+      } catch {
+        return {
+          id: userId,
+          email: `${userId}@local.orbim`,
+          aud: 'authenticated',
+          role: 'authenticated',
+          app_metadata: { provider: 'local' },
+          user_metadata: { display_name: userId },
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        } as User
+      }
+    }
+  }
+
   const client = createServerSupabaseClient(undefined, envOverride)
   if (!client) return null
 

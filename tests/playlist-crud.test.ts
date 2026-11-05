@@ -6,6 +6,23 @@ before(() => {
   process.env.VITE_SUPABASE_URL = 'https://mock-project-ref.supabase.co'
   process.env.VITE_SUPABASE_ANON_KEY =
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSJ9.fake-signature'
+
+  const store = new Map<string, string>()
+  const mockStorage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => store.set(key, String(value)),
+    removeItem: (key: string) => store.delete(key),
+    clear: () => store.clear(),
+    get length() {
+      return store.size
+    },
+    key: (index: number) => Array.from(store.keys())[index] ?? null,
+  }
+  ;(globalThis as any).window = {
+    localStorage: mockStorage,
+    location: { origin: 'http://localhost:5173' },
+  }
+  ;(globalThis as any).localStorage = mockStorage
 })
 
 process.env.VITE_SUPABASE_URL = 'https://mock-project-ref.supabase.co'
@@ -18,6 +35,12 @@ import {
   removeTrackFromPlaylist,
   updateSupabasePlaylist,
 } from '../src/services/playlist/supabase-playlist.ts'
+import {
+  saveLocalPlaylist,
+  saveLocalPlaylistTrack,
+  getLocalPlaylistTracks,
+  type LocalPlaylistTrackRecord,
+} from '../src/services/auth/local-auth-store.ts'
 
 describe('Playlist CRUD: Create, Read, Update, Delete & Security Enforcement', () => {
   describe('1. Update Playlist Validation & Authentication', () => {
@@ -81,13 +104,105 @@ describe('Playlist CRUD: Create, Read, Update, Delete & Security Enforcement', (
   })
 
   describe('3. Remove Track From Playlist', () => {
-    it('requires authentication to remove a track from a playlist', async () => {
+    it('requires authentication to remove a track from an unknown remote playlist', async () => {
       const res = await removeTrackFromPlaylist({
-        playlistId: 'mock-playlist-id',
+        playlistId: 'unknown-remote-playlist-id',
         providerTrackId: 'mock-track-id',
       })
       assert.ok(res.error)
       assert.match(res.error.message, /authentication required/i)
+    })
+
+    it('removes track using database track UUID targeting row id', async () => {
+      const playlistId = 'local-pl-uuid-test'
+      const trackDbUuid = '11111111-2222-3333-4444-555555555555'
+      const providerId = 'spotify-track-abc'
+
+      saveLocalPlaylist({
+        id: playlistId,
+        title: 'Test Playlist',
+        owner_id: 'test-user',
+        visibility: 'private',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+
+      const trackRow: LocalPlaylistTrackRecord = {
+        id: trackDbUuid,
+        playlist_id: playlistId,
+        provider: 'spotify',
+        provider_track_id: providerId,
+        title: 'Track A',
+        artist_name: 'Artist A',
+        duration_seconds: 200,
+        audio_url: null,
+        storage_path: null,
+        audio_source_type: null,
+        catalog_track_id: null,
+        position: 1000,
+        added_at: new Date().toISOString(),
+        added_by: 'test-user',
+      }
+      saveLocalPlaylistTrack(trackRow)
+
+      const initialTracks = getLocalPlaylistTracks(playlistId)
+      assert.equal(initialTracks.length, 1)
+
+      // Remove using database track UUID
+      const res = await removeTrackFromPlaylist({
+        playlistId,
+        trackId: trackDbUuid,
+      })
+      assert.equal(res.error, null)
+
+      const remainingTracks = getLocalPlaylistTracks(playlistId)
+      assert.equal(remainingTracks.length, 0)
+    })
+
+    it('removes track using provider track ID targeting provider_track_id', async () => {
+      const playlistId = 'local-pl-provider-test'
+      const trackDbUuid = '99999999-8888-7777-6666-555555555555'
+      const providerId = 'provider-track-xyz-123'
+
+      saveLocalPlaylist({
+        id: playlistId,
+        title: 'Provider Test',
+        owner_id: 'test-user',
+        visibility: 'private',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+
+      const trackRow: LocalPlaylistTrackRecord = {
+        id: trackDbUuid,
+        playlist_id: playlistId,
+        provider: 'custom',
+        provider_track_id: providerId,
+        title: 'Track B',
+        artist_name: 'Artist B',
+        duration_seconds: 150,
+        audio_url: null,
+        storage_path: null,
+        audio_source_type: null,
+        catalog_track_id: null,
+        position: 1000,
+        added_at: new Date().toISOString(),
+        added_by: 'test-user',
+      }
+      saveLocalPlaylistTrack(trackRow)
+
+      const initialTracks = getLocalPlaylistTracks(playlistId)
+      assert.equal(initialTracks.length, 1)
+
+      // Remove using provider track ID
+      const res = await removeTrackFromPlaylist({
+        playlistId,
+        providerTrackId: providerId,
+      })
+      assert.equal(res.error, null)
+
+      const remainingTracks = getLocalPlaylistTracks(playlistId)
+      assert.equal(remainingTracks.length, 0)
     })
   })
 

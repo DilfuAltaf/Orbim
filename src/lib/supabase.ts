@@ -174,10 +174,29 @@ export async function getSupabaseAccessToken(): Promise<string | null> {
   try {
     const client = getSupabaseClient()
     const { data } = await client.auth.getSession()
-    return data.session?.access_token || null
+    if (data.session?.access_token) {
+      return data.session.access_token
+    }
   } catch {
-    return null
+    // continue to local development fallback
   }
+
+  // Local development fallback: active local user mock token
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const raw = window.localStorage.getItem('orbim_active_local_user')
+      if (raw) {
+        const localUser = JSON.parse(raw) as { id?: string }
+        if (localUser?.id) {
+          return `orbim-local-access-token-${localUser.id}`
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return null
 }
 
 /**

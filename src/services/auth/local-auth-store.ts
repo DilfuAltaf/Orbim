@@ -1,10 +1,12 @@
 /**
  * Local Authentication and Storage Fallback for Seamless Testing.
  *
- * Allows users to register and sign in with any valid email format (containing '@')
- * and password without relying on third-party email delivery or hitting Supabase
- * free-tier email rate limits ('over_email_send_rate_limit').
+ * Allows users to register and sign in with any email-like identifier (containing
+ * '@') and password without relying on third-party email delivery or hitting
+ * Supabase free-tier email rate limits ('over_email_send_rate_limit').
  */
+
+import { DUPLICATE_ACCOUNT_MESSAGE, normalizeIdentifier } from '../../lib/auth-credentials.ts'
 
 export interface LocalUser {
   id: string
@@ -89,8 +91,69 @@ export function saveLocalUser(user: LocalUser): void {
 
 export function findLocalUserByEmail(email: string): LocalUser | null {
   const users = getAllLocalUsers()
-  const clean = email.trim().toLowerCase()
-  return users.find((u) => u.email.toLowerCase() === clean) || null
+  const clean = normalizeIdentifier(email)
+  return users.find((u) => normalizeIdentifier(u.email) === clean) || null
+}
+
+export interface LocalAuthOutcome {
+  user: LocalUser | null
+  error: string | null
+}
+
+/**
+ * Registers a local (demo-mode) account with the shared identifier rule.
+ *
+ * Identifiers are compared case-insensitively, and an existing identifier is
+ * rejected instead of overwritten so registration can never replace the stored
+ * credentials of an existing account.
+ */
+export function registerLocalUser(
+  identifier: string,
+  password: string,
+  displayName: string,
+): LocalAuthOutcome {
+  const email = normalizeIdentifier(identifier)
+  if (findLocalUserByEmail(email)) {
+    return { user: null, error: DUPLICATE_ACCOUNT_MESSAGE }
+  }
+
+  const user: LocalUser = {
+    id: crypto.randomUUID(),
+    email,
+    displayName,
+    password,
+    createdAt: new Date().toISOString(),
+  }
+  saveLocalUser(user)
+
+  return { user, error: null }
+}
+
+/**
+ * Verifies credentials against an existing local account. A stored password
+ * must match exactly, and unknown identifiers are not auto-created at sign-in.
+ */
+export function authenticateLocalUser(identifier: string, password: string): LocalAuthOutcome {
+  const user = findLocalUserByEmail(normalizeIdentifier(identifier))
+  if (!user) {
+    return {
+      user: null,
+      error: 'No account found for this email or identifier. Create an account first.',
+    }
+  }
+
+  if (user.password) {
+    if (user.password !== password) {
+      return { user: null, error: 'Incorrect password. Try again.' }
+    }
+    return { user, error: null }
+  }
+
+  // Seeded/imported demo accounts predate stored passwords: bind the password
+  // supplied on first sign-in so those existing accounts stay accessible.
+  const updated: LocalUser = { ...user, password }
+  saveLocalUser(updated)
+  return { user: updated, error: null }
 }
 
 export function getActiveLocalUser(): LocalUser | null {

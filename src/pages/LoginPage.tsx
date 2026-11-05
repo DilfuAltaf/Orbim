@@ -8,6 +8,7 @@ import { TextField } from '@/components/ui/TextField'
 import { site } from '@/config/site'
 import { useAuth } from '@/features/auth/auth-context'
 import { useToast } from '@/features/feedback/toast-context'
+import { PASSWORD_REQUIRED_MESSAGE, validateIdentifier } from '@/lib/auth-credentials'
 import { buttonVariants } from '@/lib/styles'
 
 export function LoginPage() {
@@ -27,8 +28,14 @@ export function LoginPage() {
     e.preventDefault()
     setFormError(null)
 
-    if (!email.trim() || !password) {
-      setFormError('Please enter your email and password.')
+    const identifierError = validateIdentifier(email)
+    if (identifierError) {
+      setFormError(identifierError)
+      return
+    }
+
+    if (!password) {
+      setFormError(PASSWORD_REQUIRED_MESSAGE)
       return
     }
 
@@ -89,7 +96,7 @@ export function LoginPage() {
       <form className="mt-5 space-y-4" onSubmit={handleSubmit} noValidate>
         <TextField
           id="login-email"
-          label="Email"
+          label="Email or identifier"
           type="email"
           autoComplete="email"
           placeholder="you@example.com"

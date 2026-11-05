@@ -329,7 +329,7 @@ export function spotifyApiDevPlugin(): Plugin {
         req.on('data', (c) => {
           body += c
         })
-        req.on('end', () => {
+        req.on('end', async () => {
           try {
             const parsed = JSON.parse(body || '{}') as {
               playlistId?: string
@@ -342,7 +342,7 @@ export function spotifyApiDevPlugin(): Plugin {
               expiresAt?: string
               playlistTitle?: string
             }
-            const result = createServerInvitation({
+            const result = await createServerInvitation({
               playlistId: parsed.playlistId || '',
               createdBy: parsed.createdBy || '',
               inviteeId: parsed.inviteeId || null,
@@ -374,27 +374,30 @@ export function spotifyApiDevPlugin(): Plugin {
       const playlistId = parsedUrl.searchParams.get('playlistId')
       const userId = parsedUrl.searchParams.get('userId') || undefined
       if (playlistId) {
-        const result = listServerInvitationsForPlaylist(playlistId, userId)
-        res.writeHead(result.error ? 403 : 200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' })
-        res.end(JSON.stringify({ success: !result.error, ...result }))
+        void listServerInvitationsForPlaylist(playlistId, userId).then((result) => {
+          res.writeHead(result.error ? 403 : 200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' })
+          res.end(JSON.stringify({ success: !result.error, ...result }))
+        })
         return true
       }
 
-      const invitations = listServerInvitationsForUser({
+      void listServerInvitationsForUser({
         userId,
         email: parsedUrl.searchParams.get('email') || undefined,
         displayName: parsedUrl.searchParams.get('displayName') || undefined,
+      }).then((invitations) => {
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' })
+        res.end(JSON.stringify({ success: true, invitations }))
       })
-      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' })
-      res.end(JSON.stringify({ success: true, invitations }))
       return true
     }
 
     if (parsedUrl.pathname === '/api/invitations/preview') {
       const token = parsedUrl.searchParams.get('token') || ''
-      const result = getServerInvitationPreview(token, parsedUrl.searchParams.get('userId') || undefined)
-      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' })
-      res.end(JSON.stringify({ success: result.found, ...result }))
+      void getServerInvitationPreview(token, parsedUrl.searchParams.get('userId') || undefined).then((result) => {
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' })
+        res.end(JSON.stringify({ success: result.found, ...result }))
+      })
       return true
     }
 
@@ -403,7 +406,7 @@ export function spotifyApiDevPlugin(): Plugin {
       req.on('data', (c) => {
         body += c
       })
-      req.on('end', () => {
+      req.on('end', async () => {
         try {
           const parsed = JSON.parse(body || '{}') as {
             invitationId?: string
@@ -416,7 +419,7 @@ export function spotifyApiDevPlugin(): Plugin {
             res.end(JSON.stringify({ success: false, errorKind: 'invalid', error: 'Missing invitationId or action' }))
             return
           }
-          const result = respondToServerInvitation({
+          const result = await respondToServerInvitation({
             invitationId: parsed.invitationId,
             userId: parsed.userId || '',
             displayName: parsed.displayName,
@@ -444,14 +447,14 @@ export function spotifyApiDevPlugin(): Plugin {
       req.on('data', (c) => {
         body += c
       })
-      req.on('end', () => {
+      req.on('end', async () => {
         try {
           const parsed = JSON.parse(body || '{}') as {
             token: string
             userId: string
             displayName?: string
           }
-          const result = acceptServerInvitation(parsed)
+          const result = await acceptServerInvitation(parsed)
           const statusCode = result.success
             ? 200
             : result.errorKind === 'wrong_account'

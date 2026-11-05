@@ -10,10 +10,15 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import {
+  classifyInvitationFailure,
   resolveInvitationStatus,
   type InvitationFailureKind,
   type InvitationStatus,
 } from '../services/playlist/invitation-lifecycle.ts'
+import {
+  createServerSupabaseClient,
+  type SupabaseClient,
+} from './supabase-server.ts'
 
 export interface ServerUserRecord {
   id: string
@@ -161,14 +166,51 @@ const DEFAULT_USERS: ServerUserRecord[] = [
   },
 ]
 
+let cachedUsers: ServerUserRecord[] | null = null
+let cachedInvitations: ServerInvitationRecord[] | null = null
+let cachedCollaborators: ServerPlaylistCollaborator[] | null = null
+let cachedPlaylists: ServerPlaylistRecord[] | null = null
+let cachedTracks: ServerPlaylistTrackRecord[] | null = null
+
+let customSupabaseClientForTesting: SupabaseClient | null = null
+
+export function _setSupabaseClientForTesting(client: SupabaseClient | null): void {
+  customSupabaseClientForTesting = client
+}
+
+function getEffectiveSupabaseClient(bearerToken?: string | null): SupabaseClient | null {
+  if (customSupabaseClientForTesting) {
+    return customSupabaseClientForTesting
+  }
+  return createServerSupabaseClient(bearerToken)
+}
+
+export function computeTokenHash(token: string): string {
+  return crypto.createHash('sha256').update(token.trim().toLowerCase()).digest('hex')
+}
+
+export function _resetServerStoreForTesting(): void {
+  cachedUsers = null
+  cachedInvitations = null
+  cachedCollaborators = null
+  cachedPlaylists = null
+  cachedTracks = null
+  customSupabaseClientForTesting = null
+}
+
 export function loadServerUsers(): ServerUserRecord[] {
+  if (cachedUsers) {
+    return [...cachedUsers]
+  }
+
   try {
     const filePath = getUsersFilePath()
     if (fs.existsSync(filePath)) {
       const content = fs.readFileSync(filePath, 'utf8')
       const list = JSON.parse(content) as ServerUserRecord[]
       if (Array.isArray(list) && list.length > 0) {
-        return list
+        cachedUsers = list
+        return [...list]
       }
     }
   } catch {
@@ -176,11 +218,13 @@ export function loadServerUsers(): ServerUserRecord[] {
   }
 
   // Seed default users if file missing or empty
+  cachedUsers = [...DEFAULT_USERS]
   saveServerUsers(DEFAULT_USERS)
-  return DEFAULT_USERS
+  return [...DEFAULT_USERS]
 }
 
 export function saveServerUsers(users: ServerUserRecord[]): void {
+  cachedUsers = [...users]
   try {
     const filePath = getUsersFilePath()
     const dir = path.dirname(filePath)
@@ -210,15 +254,21 @@ export function saveServerUser(user: ServerUserRecord): void {
 }
 
 export function loadServerInvitations(): ServerInvitationRecord[] {
+  if (cachedInvitations) {
+    return [...cachedInvitations]
+  }
+
   try {
     const filePath = getInvitationsFilePath()
     if (fs.existsSync(filePath)) {
       const content = fs.readFileSync(filePath, 'utf8')
-      return JSON.parse(content) as ServerInvitationRecord[]
+      cachedInvitations = JSON.parse(content) as ServerInvitationRecord[]
+      return [...cachedInvitations]
     }
   } catch {
     // fallback
   }
+  cachedInvitations = []
   return []
 }
 
@@ -240,6 +290,7 @@ export function saveServerInvitation(invitation: ServerInvitationRecord): void {
 }
 
 function writeServerInvitations(list: ServerInvitationRecord[]): void {
+  cachedInvitations = [...list]
   try {
     const filePath = getInvitationsFilePath()
     const dir = path.dirname(filePath)
@@ -320,7 +371,7 @@ export function sanitizeServerInvitation(
  * Creates an invitation. Used by both invitation methods: a link invitation simply
  * omits `inviteeId`.
  */
-export function createServerInvitation(params: {
+export async function createServerInvitation(params: {
   playlistId: string
   createdBy: string
   inviteeId?: string | null
@@ -330,7 +381,8 @@ export function createServerInvitation(params: {
   role?: string
   expiresAt?: string
   playlistTitle?: string
-}): ServerCreateInvitationResult {
+  bearerToken?: string | null
+}): Promise<ServerCreateInvitationResult> {
   const playlistId = (params.playlistId || '').trim()
   const createdBy = (params.createdBy || '').trim()
   const inviteeId = (params.inviteeId || '').trim() || null
@@ -339,7 +391,32 @@ export function createServerInvitation(params: {
     return { success: false, errorKind: 'invalid', error: 'Playlist and creator are required.' }
   }
 
-  const playlist = getServerPlaylistById(playlistId)
+  const supabase = getEffectiveSupabaseClient(params.bearerToken)
+  const isProd = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production'
+
+  let playlist: ServerPlaylistRecord | null = getServerPlaylistById(playlistId)
+  if (!playlist && supabase) {
+    try {
+      const { data: plRow } = await supabase
+        .from('playlists')
+        .select('id, title, owner_id, visibility, created_at, updated_at')
+        .eq('id', playlistId)
+        .maybeSingle()
+      if (plRow) {
+        playlist = {
+          id: plRow.id,
+          title: plRow.title,
+          owner_id: plRow.owner_id,
+          visibility: plRow.visibility || 'private',
+          created_at: plRow.created_at,
+          updated_at: plRow.updated_at,
+        }
+      }
+    } catch {
+      // non-blocking
+    }
+  }
+
   if (!playlist) {
     return {
       success: false,
@@ -361,6 +438,31 @@ export function createServerInvitation(params: {
       return { success: false, outcome: 'already_member', errorKind: 'already_member', error: 'That account is already a collaborator.' }
     }
 
+    if (supabase) {
+      try {
+        const { data: existingInv } = await supabase
+          .from('playlist_invitations')
+          .select('id, role')
+          .eq('playlist_id', playlistId)
+          .eq('invitee_id', inviteeId)
+          .eq('status', 'pending')
+          .maybeSingle()
+
+        if (existingInv) {
+          return {
+            success: true,
+            outcome: 'already_invited',
+            invitationId: existingInv.id,
+            playlistId,
+            playlistTitle: playlist.title,
+            role: existingInv.role || 'editor',
+          }
+        }
+      } catch {
+        // non-blocking
+      }
+    }
+
     const existingPending = loadServerInvitations().find(
       (inv) =>
         inv.playlistId === playlistId &&
@@ -380,19 +482,22 @@ export function createServerInvitation(params: {
   }
 
   const rawToken = (params.rawToken || '').trim()
-  if (!rawToken) {
+  if (!rawToken && !params.tokenHash) {
     return { success: false, errorKind: 'invalid', error: 'Invitation token is required.' }
   }
+
+  const tokenHash = params.tokenHash || (rawToken ? computeTokenHash(rawToken) : undefined)
 
   const expiresAt = params.expiresAt || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
   if (!Number.isFinite(new Date(expiresAt).getTime()) || new Date(expiresAt).getTime() <= Date.now()) {
     return { success: false, errorKind: 'invalid', error: 'Invitation expiry must be in the future.' }
   }
 
+  const invitationId = crypto.randomUUID()
   const invitation: ServerInvitationRecord = {
-    id: crypto.randomUUID(),
-    rawToken,
-    tokenHash: params.tokenHash,
+    id: invitationId,
+    rawToken: rawToken || undefined,
+    tokenHash,
     playlistId,
     playlistTitle: params.playlistTitle || playlist.title,
     role: params.role === 'editor' ? 'editor' : 'editor',
@@ -406,13 +511,56 @@ export function createServerInvitation(params: {
     acceptedBy: null,
   }
 
+  // Persist to Supabase if client is available
+  if (supabase) {
+    try {
+      const { error: insertError } = await supabase
+        .from('playlist_invitations')
+        .insert({
+          id: invitationId,
+          playlist_id: playlistId,
+          token_hash: tokenHash || null,
+          role: 'editor',
+          created_by: createdBy,
+          invitee_id: inviteeId,
+          status: 'pending',
+          expires_at: expiresAt,
+        })
+
+      if (insertError) {
+        if (isProd) {
+          return {
+            success: false,
+            errorKind: 'server',
+            error: `Failed to persist invitation in database: ${insertError.message}`,
+          }
+        }
+      }
+    } catch (err: unknown) {
+      if (isProd) {
+        const msg = err instanceof Error ? err.message : String(err)
+        return {
+          success: false,
+          errorKind: 'server',
+          error: `Database error during invitation creation: ${msg}`,
+        }
+      }
+    }
+  } else if (isProd) {
+    return {
+      success: false,
+      errorKind: 'server',
+      error: 'Supabase configuration is required for invitation persistence in production.',
+    }
+  }
+
   saveServerInvitation(invitation)
 
   return {
     success: true,
     outcome: 'created',
     invitationId: invitation.id,
-    rawToken,
+    rawToken: rawToken || undefined,
     playlistId,
     playlistTitle: invitation.playlistTitle,
     role: invitation.role,
@@ -424,11 +572,12 @@ export function createServerInvitation(params: {
  *
  * Fails closed: an unknown token is an error, never a synthetic success.
  */
-export function acceptServerInvitation(params: {
+export async function acceptServerInvitation(params: {
   token: string
   userId: string
   displayName?: string
-}): ServerInvitationResult {
+  bearerToken?: string | null
+}): Promise<ServerInvitationResult> {
   const { token, userId, displayName } = params
   const clean = (token || '').trim().toLowerCase()
 
@@ -439,11 +588,208 @@ export function acceptServerInvitation(params: {
     return { success: false, errorKind: 'not_authenticated', error: 'Sign in to accept an invitation.' }
   }
 
+  const tokenHash = computeTokenHash(clean)
+  const supabase = getEffectiveSupabaseClient(params.bearerToken)
+  const isProd = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production'
+
+  if (supabase) {
+    try {
+      if (params.bearerToken) {
+        const { data: rpcData, error: rpcError } = await supabase.rpc('accept_playlist_invitation', {
+          p_token: clean,
+        })
+        if (!rpcError && rpcData) {
+          const res = rpcData as { status: string; playlist_id: string; playlist_title: string; role: string }
+          return {
+            success: true,
+            status: res.status === 'already_member' ? 'already_member' : 'joined',
+            playlistId: res.playlist_id,
+            playlistTitle: res.playlist_title,
+            role: res.role,
+          }
+        }
+        if (rpcError) {
+          const kind = classifyInvitationFailure({ code: rpcError.code, message: rpcError.message })
+          if (kind !== 'server' && kind !== 'network') {
+            return {
+              success: false,
+              errorKind: kind,
+              error: rpcError.message,
+            }
+          }
+        }
+      }
+
+      const { data: invRow, error: invError } = await supabase
+        .from('playlist_invitations')
+        .select('id, playlist_id, role, expires_at, accepted_at, status, invitee_id, created_by, playlists(id, title, owner_id)')
+        .eq('token_hash', tokenHash)
+        .maybeSingle()
+
+      if (invError && isProd) {
+        return {
+          success: false,
+          errorKind: 'server',
+          error: `Database lookup error: ${invError.message}`,
+        }
+      }
+
+      if (invRow) {
+        const playlist = invRow.playlists as unknown as { id: string; title: string; owner_id: string } | null
+        const playlistTitle = playlist?.title || 'Playlist'
+        const nowMs = Date.now()
+        const expiresMs = new Date(invRow.expires_at).getTime()
+        const isExpired = invRow.status === 'expired' || (Number.isFinite(expiresMs) && expiresMs <= nowMs)
+
+        if (isExpired) {
+          await supabase.from('playlist_invitations').update({ status: 'expired' }).eq('id', invRow.id)
+          return { success: false, errorKind: 'expired', error: 'This invitation has expired.' }
+        }
+        if (invRow.status === 'revoked') {
+          return { success: false, errorKind: 'revoked', error: 'This invitation was revoked.' }
+        }
+        if (invRow.status === 'declined') {
+          return { success: false, errorKind: 'declined', error: 'This invitation was declined.' }
+        }
+        if (invRow.status === 'accepted') {
+          const { data: member } = await supabase
+            .from('playlist_members')
+            .select('role')
+            .eq('playlist_id', invRow.playlist_id)
+            .eq('user_id', userId)
+            .maybeSingle()
+          if (member || playlist?.owner_id === userId) {
+            return {
+              success: true,
+              status: 'already_member',
+              playlistId: invRow.playlist_id,
+              playlistTitle,
+              role: member?.role || (playlist?.owner_id === userId ? 'owner' : invRow.role),
+            }
+          }
+          return {
+            success: false,
+            errorKind: 'already_accepted',
+            error: 'This invitation link was already used by another account.',
+          }
+        }
+
+        if (invRow.invitee_id && invRow.invitee_id !== userId) {
+          return {
+            success: false,
+            errorKind: 'wrong_account',
+            error: 'This invitation is addressed to another ORBIM account.',
+          }
+        }
+
+        if (playlist?.owner_id === userId) {
+          return {
+            success: true,
+            status: 'already_member',
+            playlistId: invRow.playlist_id,
+            playlistTitle,
+            role: 'owner',
+          }
+        }
+
+        const { data: existingMember } = await supabase
+          .from('playlist_members')
+          .select('role')
+          .eq('playlist_id', invRow.playlist_id)
+          .eq('user_id', userId)
+          .maybeSingle()
+
+        if (existingMember) {
+          await supabase
+            .from('playlist_invitations')
+            .update({ status: 'accepted', accepted_at: new Date().toISOString(), accepted_by: userId, responded_at: new Date().toISOString() })
+            .eq('id', invRow.id)
+          return {
+            success: true,
+            status: 'already_member',
+            playlistId: invRow.playlist_id,
+            playlistTitle,
+            role: existingMember.role,
+          }
+        }
+
+        const nowIso = new Date().toISOString()
+        const { error: updateError } = await supabase
+          .from('playlist_invitations')
+          .update({
+            status: 'accepted',
+            accepted_at: nowIso,
+            accepted_by: userId,
+            responded_at: nowIso,
+          })
+          .eq('id', invRow.id)
+
+        if (updateError && isProd) {
+          return {
+            success: false,
+            errorKind: 'server',
+            error: `Failed to update invitation status: ${updateError.message}`,
+          }
+        }
+
+        const { error: memberError } = await supabase
+          .from('playlist_members')
+          .upsert(
+            {
+              playlist_id: invRow.playlist_id,
+              user_id: userId,
+              role: invRow.role || 'editor',
+              joined_at: nowIso,
+            },
+            { onConflict: 'playlist_id,user_id' },
+          )
+
+        if (memberError && isProd) {
+          return {
+            success: false,
+            errorKind: 'server',
+            error: `Failed to add member to playlist: ${memberError.message}`,
+          }
+        }
+
+        await supabase
+          .from('playlists')
+          .update({ visibility: 'shared', updated_at: nowIso })
+          .eq('id', invRow.playlist_id)
+
+        return {
+          success: true,
+          status: 'joined',
+          playlistId: invRow.playlist_id,
+          playlistTitle,
+          role: invRow.role || 'editor',
+        }
+      }
+    } catch (err) {
+      if (isProd) {
+        const msg = err instanceof Error ? err.message : String(err)
+        return {
+          success: false,
+          errorKind: 'server',
+          error: `Database acceptance error: ${msg}`,
+        }
+      }
+    }
+  } else if (isProd) {
+    return {
+      success: false,
+      errorKind: 'server',
+      error: 'Supabase configuration is required in production.',
+    }
+  }
+
+  // Local development store fallback
   const current = loadServerInvitations()
   const invitation = current.find(
     (inv) =>
       (inv.rawToken && inv.rawToken.toLowerCase() === clean) ||
-      (inv.tokenHash && inv.tokenHash.toLowerCase() === clean),
+      (inv.tokenHash && inv.tokenHash.toLowerCase() === clean) ||
+      (inv.tokenHash && inv.tokenHash.toLowerCase() === tokenHash),
   )
 
   if (!invitation) {
@@ -497,7 +843,6 @@ export function acceptServerInvitation(params: {
     return { success: false, errorKind: 'invalid', error: 'The target playlist no longer exists.' }
   }
 
-  // The owner previewing their own link must not burn it.
   if (playlist.owner_id === userId) {
     return {
       success: true,
@@ -538,15 +883,73 @@ export function acceptServerInvitation(params: {
 }
 
 /** Accepts or declines an account-addressed invitation from the recipient inbox. */
-export function respondToServerInvitation(params: {
+export async function respondToServerInvitation(params: {
   invitationId: string
   userId: string
   displayName?: string
   action: 'accept' | 'decline'
-}): ServerInvitationResult {
+  bearerToken?: string | null
+}): Promise<ServerInvitationResult> {
   const { invitationId, userId, displayName, action } = params
   if (!userId) {
     return { success: false, errorKind: 'not_authenticated', error: 'Sign in to respond to an invitation.' }
+  }
+
+  const supabase = getEffectiveSupabaseClient(params.bearerToken)
+  const isProd = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production'
+
+  if (supabase) {
+    try {
+      const { data: invRow, error: invError } = await supabase
+        .from('playlist_invitations')
+        .select('id, playlist_id, role, status, expires_at, invitee_id, playlists(id, title, owner_id)')
+        .eq('id', invitationId)
+        .maybeSingle()
+
+      if (invError && isProd) {
+        return { success: false, errorKind: 'server', error: invError.message }
+      }
+
+      if (invRow) {
+        if (invRow.invitee_id && invRow.invitee_id !== userId) {
+          return { success: false, errorKind: 'unauthorized', error: 'This invitation belongs to another account.' }
+        }
+        const pl = invRow.playlists as unknown as { id: string; title: string; owner_id: string } | null
+        const nowIso = new Date().toISOString()
+
+        if (action === 'decline') {
+          await supabase.from('playlist_invitations').update({ status: 'declined', responded_at: nowIso }).eq('id', invRow.id)
+          return { success: true, status: 'declined', playlistId: invRow.playlist_id, playlistTitle: pl?.title }
+        }
+
+        // action === 'accept'
+        await supabase
+          .from('playlist_invitations')
+          .update({ status: 'accepted', accepted_at: nowIso, accepted_by: userId, responded_at: nowIso })
+          .eq('id', invRow.id)
+
+        await supabase
+          .from('playlist_members')
+          .upsert({ playlist_id: invRow.playlist_id, user_id: userId, role: invRow.role || 'editor', joined_at: nowIso }, { onConflict: 'playlist_id,user_id' })
+
+        await supabase.from('playlists').update({ visibility: 'shared', updated_at: nowIso }).eq('id', invRow.playlist_id)
+
+        return {
+          success: true,
+          status: 'joined',
+          playlistId: invRow.playlist_id,
+          playlistTitle: pl?.title,
+          role: invRow.role || 'editor',
+        }
+      }
+    } catch (err) {
+      if (isProd) {
+        const msg = err instanceof Error ? err.message : String(err)
+        return { success: false, errorKind: 'server', error: msg }
+      }
+    }
+  } else if (isProd) {
+    return { success: false, errorKind: 'server', error: 'Database persistence required in production.' }
   }
 
   const current = loadServerInvitations()
@@ -664,7 +1067,63 @@ export function resolveServerUserAliases(query: UserQueryParam | undefined): Set
  * Recipient inbox: every invitation addressed to a canonical account, including
  * history so accepted/declined items can be shown. Secrets are stripped.
  */
-export function listServerInvitationsForUser(query: UserQueryParam): ServerInvitationView[] {
+export async function listServerInvitationsForUser(
+  query: UserQueryParam,
+  bearerToken?: string | null,
+): Promise<ServerInvitationView[]> {
+  const supabase = getEffectiveSupabaseClient(bearerToken)
+  const isProd = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production'
+
+  if (supabase) {
+    try {
+      const userId = typeof query === 'string' ? query : query?.userId
+      if (userId) {
+        const { data: rows, error } = await supabase
+          .from('playlist_invitations')
+          .select('id, playlist_id, role, status, expires_at, accepted_at, responded_at, created_by, invitee_id, created_at, playlists(id, title)')
+          .eq('invitee_id', userId)
+          .order('created_at', { ascending: false })
+
+        if (!error && rows) {
+          const nowMs = Date.now()
+          return rows.map((row: any) => {
+            const playlist = row.playlists as { id: string; title: string } | null
+            const expiresMs = new Date(row.expires_at).getTime()
+            let status: InvitationStatus = row.status || 'pending'
+            if (status === 'pending' && Number.isFinite(expiresMs) && expiresMs <= nowMs) {
+              status = 'expired'
+            }
+            return {
+              id: row.id,
+              invitationId: row.id,
+              playlistId: row.playlist_id,
+              playlistTitle: playlist?.title || 'Playlist',
+              inviterUserId: row.created_by,
+              inviterDisplayName: resolveServerDisplayName(row.created_by) || 'Pemilik Playlist',
+              inviteeUserId: row.invitee_id || null,
+              inviteeDisplayName: resolveServerDisplayName(row.invitee_id),
+              role: row.role || 'editor',
+              status,
+              createdAt: row.created_at || row.expires_at,
+              expiresAt: row.expires_at,
+              respondedAt: row.responded_at || row.accepted_at || null,
+              delivery: row.invitee_id ? 'account' : 'link',
+            }
+          })
+        }
+        if (error && isProd) {
+          throw new Error(`Failed to list invitations: ${error.message}`)
+        }
+      }
+    } catch (err) {
+      if (isProd) {
+        throw err
+      }
+    }
+  } else if (isProd) {
+    throw new Error('Supabase client required in production.')
+  }
+
   const aliases = resolveServerUserAliases(query)
   if (aliases.size === 0) return []
 
@@ -679,10 +1138,79 @@ export function listServerInvitationsForUser(query: UserQueryParam): ServerInvit
 }
 
 /** Owner view of every invitation for a playlist. Secrets are stripped. */
-export function listServerInvitationsForPlaylist(
+export async function listServerInvitationsForPlaylist(
   playlistId: string,
   callerUserId?: string,
-): { invitations: ServerInvitationView[]; error?: string; errorKind?: InvitationFailureKind } {
+  bearerToken?: string | null,
+): Promise<{ invitations: ServerInvitationView[]; error?: string; errorKind?: InvitationFailureKind }> {
+  const supabase = getEffectiveSupabaseClient(bearerToken)
+  const isProd = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production'
+
+  if (supabase) {
+    try {
+      const { data: plRow, error: plErr } = await supabase
+        .from('playlists')
+        .select('id, title, owner_id')
+        .eq('id', playlistId)
+        .maybeSingle()
+
+      if (plErr && isProd) {
+        return { invitations: [], error: plErr.message, errorKind: 'server' }
+      }
+
+      if (plRow) {
+        if (callerUserId && plRow.owner_id !== callerUserId) {
+          return { invitations: [], error: 'Only the playlist owner can view invitations.', errorKind: 'unauthorized' }
+        }
+
+        const { data: rows, error: listErr } = await supabase
+          .from('playlist_invitations')
+          .select('id, playlist_id, role, status, expires_at, accepted_at, responded_at, created_by, invitee_id, created_at')
+          .eq('playlist_id', playlistId)
+          .order('created_at', { ascending: false })
+
+        if (listErr && isProd) {
+          return { invitations: [], error: listErr.message, errorKind: 'server' }
+        }
+
+        if (rows) {
+          const nowMs = Date.now()
+          const views: ServerInvitationView[] = rows.map((row: any) => {
+            const expiresMs = new Date(row.expires_at).getTime()
+            let status: InvitationStatus = row.status || 'pending'
+            if (status === 'pending' && Number.isFinite(expiresMs) && expiresMs <= nowMs) {
+              status = 'expired'
+            }
+            return {
+              id: row.id,
+              invitationId: row.id,
+              playlistId: row.playlist_id,
+              playlistTitle: plRow.title,
+              inviterUserId: row.created_by,
+              inviterDisplayName: resolveServerDisplayName(row.created_by) || 'Pemilik Playlist',
+              inviteeUserId: row.invitee_id || null,
+              inviteeDisplayName: resolveServerDisplayName(row.invitee_id),
+              role: row.role || 'editor',
+              status,
+              createdAt: row.created_at || row.expires_at,
+              expiresAt: row.expires_at,
+              respondedAt: row.responded_at || row.accepted_at || null,
+              delivery: row.invitee_id ? 'account' : 'link',
+            }
+          })
+          return { invitations: views }
+        }
+      }
+    } catch (err) {
+      if (isProd) {
+        const msg = err instanceof Error ? err.message : String(err)
+        return { invitations: [], error: msg, errorKind: 'server' }
+      }
+    }
+  } else if (isProd) {
+    return { invitations: [], error: 'Supabase client required in production.', errorKind: 'server' }
+  }
+
   const playlist = getServerPlaylistById(playlistId)
   if (!playlist) {
     return { invitations: [], error: 'Playlist not found.', errorKind: 'invalid' }
@@ -700,17 +1228,93 @@ export function listServerInvitationsForPlaylist(
 }
 
 /** Link preview: returns playlist/inviter metadata for a raw token, never the hash. */
-export function getServerInvitationPreview(
+export async function getServerInvitationPreview(
   token: string,
   callerUserId?: string,
-): { found: boolean; invitation?: ServerInvitationView; isInvitee?: boolean; errorKind?: InvitationFailureKind } {
+  bearerToken?: string | null,
+): Promise<{ found: boolean; invitation?: ServerInvitationView; isInvitee?: boolean; errorKind?: InvitationFailureKind }> {
   const clean = (token || '').trim().toLowerCase()
   if (!clean) return { found: false, errorKind: 'invalid' }
+
+  const supabase = getEffectiveSupabaseClient(bearerToken)
+  const isProd = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production'
+
+  if (supabase) {
+    try {
+      const tokenHash = computeTokenHash(clean)
+      const { data: invRow, error: invError } = await supabase
+        .from('playlist_invitations')
+        .select('id, playlist_id, role, status, expires_at, accepted_at, responded_at, created_by, invitee_id, created_at, playlists(id, title, owner_id)')
+        .eq('token_hash', tokenHash)
+        .maybeSingle()
+
+      if (invError && isProd) {
+        return { found: false, errorKind: 'server' }
+      }
+
+      if (invRow) {
+        const pl = invRow.playlists as unknown as { id: string; title: string; owner_id: string } | null
+        const nowMs = Date.now()
+        const expiresMs = new Date(invRow.expires_at).getTime()
+        const isExpired = invRow.status === 'expired' || (Number.isFinite(expiresMs) && expiresMs <= nowMs)
+
+        const effectiveStatus: InvitationStatus = isExpired
+          ? 'expired'
+          : (invRow.status as InvitationStatus) || 'pending'
+
+        const invitationView: ServerInvitationView = {
+          id: invRow.id,
+          invitationId: invRow.id,
+          playlistId: invRow.playlist_id,
+          playlistTitle: pl?.title || 'Playlist',
+          inviterUserId: invRow.created_by,
+          inviterDisplayName: resolveServerDisplayName(invRow.created_by) || 'Pemilik Playlist',
+          inviteeUserId: invRow.invitee_id || null,
+          inviteeDisplayName: resolveServerDisplayName(invRow.invitee_id),
+          role: invRow.role || 'editor',
+          status: effectiveStatus,
+          createdAt: invRow.created_at || invRow.expires_at,
+          expiresAt: invRow.expires_at,
+          respondedAt: invRow.responded_at || invRow.accepted_at || null,
+          delivery: invRow.invitee_id ? 'account' : 'link',
+        }
+
+        if (isExpired) {
+          return { found: false, errorKind: 'expired', invitation: invitationView }
+        }
+        if (invRow.status === 'revoked') {
+          return { found: false, errorKind: 'revoked', invitation: invitationView }
+        }
+        if (invRow.status === 'declined') {
+          return { found: false, errorKind: 'declined', invitation: invitationView }
+        }
+        if (invRow.status === 'accepted') {
+          return { found: false, errorKind: 'already_accepted', invitation: invitationView }
+        }
+        if (invRow.invitee_id && callerUserId && invRow.invitee_id !== callerUserId) {
+          return { found: false, errorKind: 'wrong_account', invitation: invitationView }
+        }
+
+        return {
+          found: true,
+          invitation: invitationView,
+          isInvitee: Boolean(callerUserId && invRow.invitee_id === callerUserId),
+        }
+      }
+    } catch (err) {
+      if (isProd) {
+        return { found: false, errorKind: 'server' }
+      }
+    }
+  } else if (isProd) {
+    return { found: false, errorKind: 'server' }
+  }
 
   const invitation = loadServerInvitations().find(
     (inv) =>
       (inv.rawToken && inv.rawToken.toLowerCase() === clean) ||
-      (inv.tokenHash && inv.tokenHash.toLowerCase() === clean),
+      (inv.tokenHash && inv.tokenHash.toLowerCase() === clean) ||
+      (inv.tokenHash && inv.tokenHash.toLowerCase() === computeTokenHash(clean)),
   )
 
   if (!invitation) return { found: false, errorKind: 'invalid' }
@@ -723,19 +1327,28 @@ export function getServerInvitationPreview(
 }
 
 export function loadPlaylistCollaborators(playlistId?: string): ServerPlaylistCollaborator[] {
+  if (cachedCollaborators) {
+    if (playlistId) {
+      return cachedCollaborators.filter((c) => c.playlistId === playlistId)
+    }
+    return [...cachedCollaborators]
+  }
+
   try {
     const filePath = getCollaboratorsFilePath()
     if (fs.existsSync(filePath)) {
       const content = fs.readFileSync(filePath, 'utf8')
       const list = JSON.parse(content) as ServerPlaylistCollaborator[]
+      cachedCollaborators = list
       if (playlistId) {
         return list.filter((c) => c.playlistId === playlistId)
       }
-      return list
+      return [...list]
     }
   } catch {
     // fallback
   }
+  cachedCollaborators = []
   return []
 }
 
@@ -760,6 +1373,7 @@ export function addPlaylistCollaborator(params: {
       role: params.role || 'editor',
       joinedAt: new Date().toISOString(),
     })
+    cachedCollaborators = current
 
     try {
       const filePath = getCollaboratorsFilePath()
@@ -780,6 +1394,7 @@ export function removePlaylistCollaborator(playlistId: string, userId: string): 
     (c) => !(c.playlistId === playlistId && (c.userId === userId || c.id === userId)),
   )
   if (filtered.length !== current.length) {
+    cachedCollaborators = filtered
     try {
       const filePath = getCollaboratorsFilePath()
       fs.writeFileSync(filePath, JSON.stringify(filtered, null, 2), 'utf8')
@@ -787,20 +1402,27 @@ export function removePlaylistCollaborator(playlistId: string, userId: string): 
     } catch {
       // Non-blocking
     }
+    return true
   }
   return false
 }
 
 export function loadServerPlaylists(): ServerPlaylistRecord[] {
+  if (cachedPlaylists) {
+    return [...cachedPlaylists]
+  }
+
   try {
     const filePath = getPlaylistsFilePath()
     if (fs.existsSync(filePath)) {
       const content = fs.readFileSync(filePath, 'utf8')
-      return JSON.parse(content) as ServerPlaylistRecord[]
+      cachedPlaylists = JSON.parse(content) as ServerPlaylistRecord[]
+      return [...cachedPlaylists]
     }
   } catch {
     // fallback
   }
+  cachedPlaylists = []
   return []
 }
 
@@ -812,6 +1434,7 @@ export function saveServerPlaylist(playlist: ServerPlaylistRecord): void {
   } else {
     current.unshift(playlist)
   }
+  cachedPlaylists = current
 
   try {
     const filePath = getPlaylistsFilePath()
@@ -827,6 +1450,7 @@ export function saveServerPlaylist(playlist: ServerPlaylistRecord): void {
 
 export function deleteServerPlaylist(playlistId: string): void {
   const current = loadServerPlaylists().filter((p) => p.id !== playlistId)
+  cachedPlaylists = current
   try {
     const filePath = getPlaylistsFilePath()
     fs.writeFileSync(filePath, JSON.stringify(current, null, 2), 'utf8')
@@ -835,8 +1459,9 @@ export function deleteServerPlaylist(playlistId: string): void {
   }
 
   // Cascade tracks
+  const remainingTracks = loadServerPlaylistTracks().filter((t) => t.playlist_id !== playlistId)
+  cachedTracks = remainingTracks
   try {
-    const remainingTracks = loadServerPlaylistTracks().filter((t) => t.playlist_id !== playlistId)
     const filePath = getPlaylistTracksFilePath()
     fs.writeFileSync(filePath, JSON.stringify(remainingTracks, null, 2), 'utf8')
   } catch {
@@ -844,8 +1469,9 @@ export function deleteServerPlaylist(playlistId: string): void {
   }
 
   // Cascade collaborators
+  const remainingCollabs = loadPlaylistCollaborators().filter((c) => c.playlistId !== playlistId)
+  cachedCollaborators = remainingCollabs
   try {
-    const remainingCollabs = loadPlaylistCollaborators().filter((c) => c.playlistId !== playlistId)
     const filePath = getCollaboratorsFilePath()
     fs.writeFileSync(filePath, JSON.stringify(remainingCollabs, null, 2), 'utf8')
   } catch {
@@ -853,8 +1479,9 @@ export function deleteServerPlaylist(playlistId: string): void {
   }
 
   // Cascade invitations
+  const remainingInvs = loadServerInvitations().filter((i) => i.playlistId !== playlistId)
+  cachedInvitations = remainingInvs
   try {
-    const remainingInvs = loadServerInvitations().filter((i) => i.playlistId !== playlistId)
     const filePath = getInvitationsFilePath()
     fs.writeFileSync(filePath, JSON.stringify(remainingInvs, null, 2), 'utf8')
   } catch {
@@ -863,25 +1490,35 @@ export function deleteServerPlaylist(playlistId: string): void {
 }
 
 export function loadServerPlaylistTracks(playlistId?: string): ServerPlaylistTrackRecord[] {
+  if (cachedTracks) {
+    if (playlistId) {
+      return cachedTracks.filter((t) => t.playlist_id === playlistId)
+    }
+    return [...cachedTracks]
+  }
+
   try {
     const filePath = getPlaylistTracksFilePath()
     if (fs.existsSync(filePath)) {
       const content = fs.readFileSync(filePath, 'utf8')
       const list = JSON.parse(content) as ServerPlaylistTrackRecord[]
+      cachedTracks = list
       if (playlistId) {
         return list.filter((t) => t.playlist_id === playlistId)
       }
-      return list
+      return [...list]
     }
   } catch {
     // fallback
   }
+  cachedTracks = []
   return []
 }
 
 export function saveServerPlaylistTrack(track: ServerPlaylistTrackRecord): void {
   const current = loadServerPlaylistTracks()
   current.push(track)
+  cachedTracks = current
 
   try {
     const filePath = getPlaylistTracksFilePath()
@@ -895,16 +1532,22 @@ export function saveServerPlaylistTrack(track: ServerPlaylistTrackRecord): void 
   }
 }
 
-export function deleteServerPlaylistTrack(playlistId: string, trackId: string): void {
-  const current = loadServerPlaylistTracks().filter(
-    (t) => !(t.playlist_id === playlistId && t.id === trackId),
+export function deleteServerPlaylistTrack(playlistId: string, trackId: string): boolean {
+  const current = loadServerPlaylistTracks()
+  const filtered = current.filter(
+    (t) => !(t.playlist_id === playlistId && (t.id === trackId || t.provider_track_id === trackId)),
   )
-  try {
-    const filePath = getPlaylistTracksFilePath()
-    fs.writeFileSync(filePath, JSON.stringify(current, null, 2), 'utf8')
-  } catch {
-    // Non-blocking
+  const didRemove = filtered.length !== current.length
+  if (didRemove) {
+    cachedTracks = filtered
+    try {
+      const filePath = getPlaylistTracksFilePath()
+      fs.writeFileSync(filePath, JSON.stringify(filtered, null, 2), 'utf8')
+    } catch {
+      // Non-blocking
+    }
   }
+  return didRemove
 }
 
 export function getFullServerPlaylist(playlistId: string): {
